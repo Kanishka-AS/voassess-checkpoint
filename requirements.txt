@@ -1,0 +1,14 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+openai-whisper>=20231117
+python-multipart>=0.0.6
+httpx>=0.27.0
+# .env file loading — see load_dotenv() near the top of app.py. Only source
+# of SARVAM_API_KEY / SARVAM_API_URL / SARVAM_LANGUAGE_CODE / LOCAL_LLM_URL
+# for local dev; a real deployment should set these as actual process env
+# vars instead (see .env.example).
+python-dotenv>=1.0.0
+# Grammar checking — talks to our self-hosted, modified LanguageTool
+# container over HTTP (see LANGUAGETOOL_URL in app.py). No local Java
+# needed anymore since we don't spawn LanguageTool in this process.
+language-tool-python>=2.7.1

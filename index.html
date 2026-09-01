@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceCoach by Auravo – Speech Assessment</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ HEADER ════════════════════════════════ -->
+<header class="app-header">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">
+        <!-- Auravo waveform icon -->
+        <svg viewBox="0 0 72 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1"  y="24" width="8" height="26" rx="4" fill="#a02818"/>
+          <circle cx="5"  cy="20" r="4" fill="#a02818"/>
+          <rect x="13" y="14" width="8" height="36" rx="4" fill="#c03828"/>
+          <circle cx="17" cy="10" r="4" fill="#c03828"/>
+          <rect x="25" y="5"  width="8" height="45" rx="4" fill="#e05030"/>
+          <circle cx="29" cy="1"  r="4" fill="#e05030"/>
+          <rect x="37" y="15" width="8" height="35" rx="4" fill="#e86830"/>
+          <circle cx="41" cy="11" r="4" fill="#e86830"/>
+          <rect x="49" y="23" width="8" height="27" rx="4" fill="#f07c24"/>
+          <circle cx="53" cy="19" r="4" fill="#f07c24"/>
+          <rect x="61" y="30" width="8" height="20" rx="4" fill="#f4941c"/>
+          <circle cx="65" cy="26" r="4" fill="#f4941c"/>
+        </svg>
+      </span>
+      <span>
+        <span class="logo-text">VoiceAssessment</span>
+        <small class="logo-sub">by Talking Labs</small>
+      </span>
+    </div>
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="record">
+        <span class="tab-icon">⏺</span>Quick Assessment
+      </button>
+      <button class="tab-btn" data-tab="assessment">
+        <span class="tab-icon">🎓</span> English Assessment
+      </button>
+      <button class="tab-btn" data-tab="history">
+        <span class="tab-icon">📋</span> History
+      </button>
+      <button class="tab-btn" data-tab="progress">
+        <span class="tab-icon">📈</span> Progress
+      </button>
+    </nav>
+    <!-- user-pill injected here by auth-check.js -->
+  </div>
+</header>
+
+<main>
+
+<!-- ═══════════════════════════ RECORD TAB ════════════════════════════════ -->
+<section id="tab-record" class="tab-content active">
+
+  <!-- Recording panel -->
+  <div class="record-panel">
+    <canvas id="waveform" width="700" height="90"></canvas>
+
+    <div class="timer-wrap">
+      <span id="timer" class="timer-text">0:00</span>
+      <span class="timer-max">/ 2:00</span>
+    </div>
+
+    <button id="record-btn" class="record-btn" title="Start / Stop recording">
+      <span class="btn-ring"></span>
+      <span class="btn-core">
+        <svg class="mic-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="2" width="6" height="13" rx="3"/>
+          <path d="M5 10a7 7 0 0 0 14 0"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        <svg class="stop-svg hidden" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="4" y="4" width="16" height="16" rx="2"/>
+        </svg>
+      </span>
+    </button>
+
+    <p id="record-hint" class="record-hint">Click to start recording · up to 2 minutes</p>
+    <p id="record-status" class="record-status"></p>
+  </div>
+
+  <!-- Spinner shown while processing -->
+  <div id="processing-overlay" class="processing-overlay hidden">
+    <div class="spinner"></div>
+    <p>Analysing your speech…</p>
+  </div>
+
+  <!-- Results (hidden until assessment done) -->
+  <div id="results" class="results-wrap hidden">
+
+    <!-- Top row: overall + radar -->
+    <div class="results-top">
+
+      <div class="overall-card">
+        <svg class="ring-svg" viewBox="0 0 120 120">
+          <circle class="ring-bg" cx="60" cy="60" r="52"/>
+          <circle id="overall-ring" class="ring-fg" cx="60" cy="60" r="52"
+                  stroke-dasharray="327" stroke-dashoffset="327"/>
+        </svg>
+        <div class="overall-inner">
+          <span id="overall-score" class="overall-num">—</span>
+          <span class="overall-label">Overall</span>
+        </div>
+      </div>
+
+      <div class="result-radar-card">
+        <h3 class="card-title">Speech Profile</h3>
+        <canvas id="result-radar"></canvas>
+      </div>
+
+    </div>
+
+    <!-- Voice Archetype highlight -->
+    <div id="archetype-card" class="archetype-card">
+      <span id="archetype-emoji" class="archetype-emoji">🎙️</span>
+      <div class="archetype-body">
+        <span class="archetype-eyebrow">Voice Archetype</span>
+        <h3 id="archetype-name" class="archetype-name">—</h3>
+        <p id="archetype-desc" class="archetype-desc">—</p>
+        <div id="archetype-traits" class="archetype-traits"></div>
+      </div>
+    </div>
+
+    <!-- Metric cards -->
+    <div class="metrics-grid">
+
+      <div class="metric-card" data-metric="pace">
+        <div class="metric-header">
+          <span class="metric-icon">⚡</span>
+          <span class="metric-name">Pace</span>
+          <span id="pace-score" class="metric-score">—</span>
+        </div>
+        <div class="progress-track"><div id="pace-bar" class="progress-fill" style="width:0%"></div></div>
+        <p id="pace-detail" class="metric-detail">—</p>
+      </div>
+
+      <div class="metric-card" data-metric="filler">
+        <div class="metric-header">
+          <span class="metric-icon">🔇</span>
+          <span class="metric-name">Filler Words</span>
+          <span id="filler-score" class="metric-score">—</span>
+        </div>
+        <div class="progress-track"><div id="filler-bar" class="progress-fill" style="width:0%"></div></div>
+        <p id="filler-detail" class="metric-detail">—</p>
+      </div>
+
+      <div class="metric-card" data-metric="pronunciation">
+        <div class="metric-header">
+          <span class="metric-icon">🗣</span>
+          <span class="metric-name">Pronunciation</span>
+          <span id="pronunciation-score" class="metric-score">—</span>
+        </div>
+        <div class="progress-track"><div id="pronunciation-bar" class="progress-fill" style="width:0%"></div></div>
+        <p id="pronunciation-detail" class="metric-detail">—</p>
+      </div>
+
+      <div class="metric-card" data-metric="grammar">
+        <div class="metric-header">
+          <span class="metric-icon">✏️</span>
+          <span class="metric-name">Grammar</span>
+          <span id="grammar-score" class="metric-score">—</span>
+        </div>
+        <div class="progress-track"><div id="grammar-bar" class="progress-fill" style="width:0%"></div></div>
+        <p id="grammar-detail" class="metric-detail">—</p>
+      </div>
+
+      <div class="metric-card" data-metric="clarity">
+        <div class="metric-header">
+          <span class="metric-icon">💎</span>
+          <span class="metric-name">Clarity</span>
+          <span id="clarity-score" class="metric-score">—</span>
+        </div>
+        <div class="progress-track"><div id="clarity-bar" class="progress-fill" style="width:0%"></div></div>
+        <p id="clarity-detail" class="metric-detail">—</p>
+      </div>
+
+    </div><!-- /metrics-grid -->
+
+    <!-- Pronunciation issues detail panel -->
+    <div id="pronun-panel" class="issues-panel hidden">
+      <div class="issues-header">
+        <span class="issues-icon">🗣</span>
+        <h3>Pronunciation — Words to Work On</h3>
+        <span id="pronun-count" class="issues-badge">0</span>
+      </div>
+      <p class="issues-hint">
+        These words had lower clarity in your recording. Click <strong>▶ Hear it</strong>
+        to listen to the correct pronunciation, then try saying it aloud.
+      </p>
+      <div id="pronun-list" class="pronun-list"></div>
+    </div>
+
+    <!-- Grammar issues detail panel -->
+    <div id="grammar-panel" class="issues-panel hidden">
+      <div class="issues-header">
+        <span class="issues-icon">✏️</span>
+        <h3>Grammar — Issues &amp; Corrections</h3>
+        <span id="grammar-count" class="issues-badge">0</span>
+      </div>
+      <p class="issues-hint">
+        Each row shows what was said and the suggested correction.
+        Click <strong>▶ Hear correction</strong> to hear the right phrasing.
+      </p>
+      <div id="grammar-list" class="grammar-list"></div>
+    </div>
+
+    <!-- Transcript -->
+    <div class="text-card transcript-card">
+      <div class="text-card-header">
+        <h3>Transcript</h3>
+        <span class="badge" id="word-count-badge">0 words</span>
+      </div>
+      <p id="transcript-text" class="transcript-body"></p>
+    </div>
+
+    <!-- Feedback -->
+    <div class="text-card feedback-card">
+      <div class="text-card-header">
+        <h3>Personalised Feedback</h3>
+        <button id="speak-btn" class="speak-btn" title="Read feedback aloud">
+          🔊 Read Aloud
+        </button>
+      </div>
+      <p id="feedback-text" class="feedback-body"></p>
+    </div>
+
+  </div><!-- /results-wrap -->
+
+</section>
+
+<!-- ═══════════════════════ ENGLISH ASSESSMENT TAB ═════════════════════════ -->
+<section id="tab-assessment" class="tab-content hidden">
+  <div id="assessment-root"></div>
+</section>
+
+<!-- ═══════════════════════════ HISTORY TAB ════════════════════════════════ -->
+<section id="tab-history" class="tab-content hidden">
+  <div class="section-header">
+    <h2>Recording History</h2>
+    <span id="history-count" class="count-badge"></span>
+  </div>
+  <div id="history-list" class="history-list">
+    <p class="placeholder">No recordings yet — go to Record to get started.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ PROGRESS TAB ════════════════════════════════ -->
+<section id="tab-progress" class="tab-content hidden">
+
+  <!-- Summary stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <span id="stat-sessions" class="stat-num">—</span>
+      <span class="stat-label">Sessions</span>
+    </div>
+    <div class="stat-card">
+      <span id="stat-avg" class="stat-num">—</span>
+      <span class="stat-label">Avg Score</span>
+    </div>
+    <div class="stat-card">
+      <span id="stat-best" class="stat-num">—</span>
+      <span class="stat-label">Best Score</span>
+    </div>
+    <div class="stat-card">
+      <span id="stat-improvement" class="stat-num">—</span>
+      <span class="stat-label">Improvement</span>
+    </div>
+  </div>
+
+  <!-- Top charts -->
+  <div class="charts-top">
+    <div class="chart-card chart-radar">
+      <h3 class="chart-title">Latest Session Profile</h3>
+      <canvas id="progress-radar"></canvas>
+    </div>
+    <div class="chart-card chart-trend">
+      <h3 class="chart-title">Overall Score Trend</h3>
+      <canvas id="overall-trend"></canvas>
+    </div>
+  </div>
+
+  <!-- Per-metric trends -->
+  <h3 class="section-subtitle">Metric Trends</h3>
+  <div class="metric-charts-grid">
+    <div class="chart-card">
+      <h4 class="metric-chart-title" style="color:#06b6d4">⚡ Pace</h4>
+      <canvas id="chart-pace"></canvas>
+    </div>
+    <div class="chart-card">
+      <h4 class="metric-chart-title" style="color:#f59e0b">🔇 Filler Words</h4>
+      <canvas id="chart-filler"></canvas>
+    </div>
+    <div class="chart-card">
+      <h4 class="metric-chart-title" style="color:#10b981">🗣 Pronunciation</h4>
+      <canvas id="chart-pronunciation"></canvas>
+    </div>
+    <div class="chart-card">
+      <h4 class="metric-chart-title" style="color:#3b82f6">✏️ Grammar</h4>
+      <canvas id="chart-grammar"></canvas>
+    </div>
+    <div class="chart-card">
+      <h4 class="metric-chart-title" style="color:#8b5cf6">💎 Clarity</h4>
+      <canvas id="chart-clarity"></canvas>
+    </div>
+    <div class="chart-card">
+      <h4 class="metric-chart-title" style="color:#ec4899">📚 Vocabulary Coverage</h4>
+      <canvas id="chart-vocabulary"></canvas>
+    </div>
+    <div class="chart-card">
+      <h4 class="metric-chart-title" style="color:#14b8a6">🏅 CEFR Level</h4>
+      <canvas id="chart-cefr"></canvas>
+    </div>
+  </div>
+
+</section>
+
+</main>
+
+<script type="module" src="auth-check.js"></script>
+<script src="script.js"></script>
+<script src="assessment.js"></script>
+</body>
+</html>

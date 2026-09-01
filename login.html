@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceAssessment by Talking Labs — Sign In</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+
+  <div class="auth-layout">
+
+    <!-- Left branding panel -->
+    <div class="brand-panel">
+      <div class="brand-content">
+        <div class="brand-icon">
+          <!-- Auravo waveform icon (large) -->
+          <svg viewBox="0 0 108 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1"  y="36" width="12" height="38" rx="6" fill="#a02818"/>
+            <circle cx="7"  cy="30" r="6" fill="#a02818"/>
+            <rect x="17" y="22" width="12" height="52" rx="6" fill="#c03828"/>
+            <circle cx="23" cy="16" r="6" fill="#c03828"/>
+            <rect x="33" y="8"  width="12" height="66" rx="6" fill="#e05030"/>
+            <circle cx="39" cy="2"  r="6" fill="#e05030"/>
+            <rect x="49" y="20" width="12" height="54" rx="6" fill="#e86830"/>
+            <circle cx="55" cy="14" r="6" fill="#e86830"/>
+            <rect x="65" y="32" width="12" height="42" rx="6" fill="#f07824"/>
+            <circle cx="71" cy="26" r="6" fill="#f07824"/>
+            <rect x="81" y="42" width="12" height="32" rx="6" fill="#f4921c"/>
+            <circle cx="87" cy="36" r="6" fill="#f4921c"/>
+            <rect x="97" y="50" width="9"  height="24" rx="4.5" fill="#f8a818"/>
+            <circle cx="101.5" cy="45" r="4.5" fill="#f8a818"/>
+          </svg>
+        </div>
+        <h1>VoiceAssessment</h1>
+        <p style="font-size:.85rem;color:#e05530;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">by auravo</p>
+        <p>AI-powered Voice assessment.<br/>Record, analyse, and improve your English delivery.</p>
+
+        <ul class="feature-list">
+          <li>
+            <span class="feat-icon">⚡</span>
+            <span>Pace, filler words &amp; clarity scoring</span>
+          </li>
+          <li>
+            <span class="feat-icon">🗣</span>
+            <span>Word-level pronunciation feedback</span>
+          </li>
+          <li>
+            <span class="feat-icon">✏️</span>
+            <span>Grammar corrections with examples</span>
+          </li>
+          <li>
+            <span class="feat-icon">📈</span>
+            <span>Progress charts across all sessions</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Right auth panel -->
+    <div class="auth-panel">
+      <div class="auth-card">
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" id="tabOtp"    onclick="switchTab('otp')">Email Code</button>
+          <button class="tab"        id="tabSignUp" onclick="switchTab('signup')">Sign Up</button>
+        </div>
+
+        <!-- Error / success banner -->
+        <div id="authBanner" class="auth-banner hidden"></div>
+
+        <!-- Email Code (OTP) form -->
+        <form id="formOtp" onsubmit="handleOtpSubmit(event)">
+          <p class="otp-hint" id="otpHint">We'll email you a one-time code — no password needed.</p>
+
+          <div class="field" id="otpEmailField">
+            <label>Email</label>
+            <input type="email" id="otpEmail" placeholder="you@example.com"
+                   required autocomplete="email" />
+          </div>
+
+          <div class="field hidden" id="otpCodeField">
+            <label>One-time code</label>
+            <input type="text" id="otpCode" placeholder="123456"
+                   inputmode="numeric" autocomplete="one-time-code" />
+          </div>
+
+          <button type="submit" class="btn-submit" id="btnOtp">
+            <span class="btn-text">Send Code</span>
+            <span class="btn-spinner hidden"></span>
+          </button>
+
+          <button type="button" class="btn-link hidden" id="btnOtpReset" onclick="resetOtpForm()">
+            Use a different email
+          </button>
+        </form>
+
+        <!-- Sign Up form -->
+        <form id="formSignUp" class="hidden" onsubmit="handleSignUp(event)">
+          <p class="otp-hint">New here? Create an account, then sign back in anytime with an emailed code.</p>
+          <div class="field">
+            <label>Name</label>
+            <input type="text" id="suName" placeholder="Your name"
+                   required autocomplete="name" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="suEmail" placeholder="you@example.com"
+                   required autocomplete="email" />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="suPassword" placeholder="Min. 8 characters"
+                   required minlength="8" autocomplete="new-password" />
+          </div>
+          <div class="field">
+            <label>Confirm Password</label>
+            <input type="password" id="suConfirm" placeholder="Repeat password"
+                   required autocomplete="new-password" />
+          </div>
+          <button type="submit" class="btn-submit" id="btnSignUp">
+            <span class="btn-text">Create Account</span>
+            <span class="btn-spinner hidden"></span>
+          </button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="login.js"></script>
+</body>
+</html>

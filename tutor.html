@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tutor View - Debug Assessments</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: #0d0b0a;
+            color: #e7e9ee;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: #181310;
+            border: 1px solid #382e29;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .header h1 {
+            color: #e05530;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .header .subtitle {
+            color: #7a6e66;
+            font-size: 14px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #e05530;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #b83318;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #2a2f3a;
+            color: #e7e9ee;
+        }
+
+        .btn-secondary:hover {
+            background: #3a3f4a;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .badge {
+            background: #2a2f3a;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #8891a0;
+        }
+
+        /* Login Box */
+        .login-box {
+            max-width: 400px;
+            margin: 80px auto;
+            background: #181310;
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid #382e29;
+            text-align: center;
+        }
+
+        .login-box h2 {
+            color: #e05530;
+            margin-bottom: 8px;
+        }
+
+        .login-box p {
+            color: #7a6e66;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .login-box input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0d0b0a;
+            border: 1px solid #382e29;
+            border-radius: 8px;
+            color: #e7e9ee;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+
+        .login-box input:focus {
+            outline: none;
+            border-color: #e05530;
+        }
+
+        .login-box .error {
+            color: #ef4444;
+            font-size: 14px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: #181310;
+            border: 1px solid #382e29;
+            border-radius: 12px;
+            padding: 16px 20px;
+            text-align: center;
+        }
+
+        .stat-card .number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #e05530;
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: #7a6e66;
+            margin-top: 4px;
+        }
+
+        /* Table */
+        .table-container {
+            background: #181310;
+            border: 1px solid #382e29;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .table-scroll {
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            background: #221a16;
+            color: #7a6e66;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 2px solid #382e29;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #2a1f1a;
+            vertical-align: middle;
+        }
+
+        tr:hover td {
+            background: #221a16;
+        }
+
+        .score-good {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .score-ok {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+
+        .score-poor {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        .transcript-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: help;
+        }
+
+        .transcript-cell:hover {
+            white-space: normal;
+            overflow: visible;
+            background: #221a16;
+            position: relative;
+            z-index: 5;
+        }
+
+        .id-cell {
+            color: #7a6e66;
+            font-size: 12px;
+        }
+
+        .archetype-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #2a2f3a;
+            color: #e7e9ee;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #7a6e66;
+        }
+
+        .loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #2a2f3a;
+            border-top-color: #e05530;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Empty */
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #7a6e66;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+                text-align: center;
+            }
+
+            .header-actions {
+                justify-content: center;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            th,
+            td {
+                padding: 8px 10px;
+            }
+
+            .transcript-cell {
+                max-width: 120px;
+            }
+        }
+
+        /* Tooltip for full transcript */
+        .transcript-tooltip {
+            position: relative;
+            cursor: help;
+        }
+
+        /* Detail view modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #181310;
+            border: 1px solid #382e29;
+            border-radius: 16px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #382e29;
+        }
+
+        .modal-header h2 {
+            color: #e05530;
+            font-size: 20px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #7a6e66;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: #e7e9ee;
+        }
+
+        .modal-body {
+            color: #e7e9ee;
+        }
+
+        .modal-body .detail-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid #1a1410;
+        }
+
+        .modal-body .detail-label {
+            color: #7a6e66;
+            width: 150px;
+            flex-shrink: 0;
+        }
+
+        .modal-body .detail-value {
+            color: #e7e9ee;
+            word-break: break-word;
+        }
+
+        .modal-body .detail-value pre {
+            background: #0d0b0a;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            overflow-x: auto;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 4px;
+        }
+
+        .export-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .export-btn:hover {
+            background: #059669;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <!-- Login Screen -->
+        <div id="loginScreen" class="login-box">
+            <h2>🔒 Tutor View</h2>
+            <p>Enter the password to view all debug assessment results</p>
+            <input type="password" id="passwordInput" placeholder="Enter password..." />
+            <button class="btn btn-primary" onclick="login()" style="width:100%;">View Assessments</button>
+            <div id="loginError" class="error">Incorrect password. Please try again.</div>
+            <div style="margin-top:16px;font-size:12px;color:#7a6e66;">
+                Default password: <strong>tutor123</strong>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div id="mainContent" style="display:none;">
+            <!-- Header -->
+            <div class="header">
+                <div>
+                    <h1>📊 Debug Assessment Results</h1>
+                    <div class="subtitle">All assessments from the debug UI - viewable without PocketBase login</div>
+                </div>
+                <div class="header-actions">
+                    <span class="badge" id="resultCount">0 results</span>
+                    <button class="btn btn-secondary" onclick="loadData()">🔄 Refresh</button>
+                    <button class="btn btn-success" onclick="exportCSV()">📥 Export CSV</button>
+                    <button class="btn btn-primary" onclick="window.location.href='/debug-ui'">🎙️ Debug UI</button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats" id="statsRow">
+                <div class="stat-card">
+                    <div class="number" id="statTotal">0</div>
+                    <div class="label">Total Assessments</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number" id="statAvg">—</div>
+                    <div class="label">Average Score</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number" id="statBest">—</div>
+                    <div class="label">Best Score</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number" id="statWorst">—</div>
+                    <div class="label">Worst Score</div>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="table-container">
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Timestamp</th>
+                                <th>Transcript</th>
+                                <th>Overall</th>
+                                <th>Pace</th>
+                                <th>WPM</th>
+                                <th>Filler</th>
+                                <th>Filler Count</th>
+                                <th>Pronunciation</th>
+                                <th>Grammar</th>
+                                <th>Errors</th>
+                                <th>Clarity</th>
+                                <th>Vocabulary</th>
+                                <th>CEFR</th>
+                                <th>Archetype</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <tr>
+                                <td colspan="16" class="loading">
+                                    <div class="spinner"></div>
+                                    Loading assessments...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modalTitle">Assessment Details</h2>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="detail-row">
+                    <span class="detail-label">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let assessments = [];
+        let password = '';
+
+        function login() {
+            const input = document.getElementById('passwordInput');
+            password = input.value.trim();
+            document.getElementById('loginError').style.display = 'none';
+
+            if (!password) {
+                document.getElementById('loginError').textContent = 'Please enter a password';
+                document.getElementById('loginError').style.display = 'block';
+                return;
+            }
+
+            loadData();
+        }
+
+        async function loadData() {
+            const tbody = document.getElementById('tableBody');
+            const loading = document.getElementById('loading');
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="16" class="loading">
+                        <div class="spinner"></div>
+                        Loading assessments...
+                    </td>
+                </tr>
+            `;
+
+            try {
+                const res = await fetch('/tutor/debug-data?password=' + encodeURIComponent(password));
+
+                if (res.status === 401) {
+                    document.getElementById('loginError').textContent = 'Incorrect password. Please try again.';
+                    document.getElementById('loginError').style.display = 'block';
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="16" style="text-align:center;padding:40px;color:#7a6e66;">
+                                Unauthorized - Incorrect password
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                if (!res.ok) {
+                    throw new Error('Failed to load data');
+                }
+
+                const data = await res.json();
+
+                // Show main content, hide login
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                document.getElementById('loginError').style.display = 'none';
+
+                assessments = data;
+
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="16" style="text-align:center;padding:40px;color:#7a6e66;">
+                                <div style="font-size:48px;margin-bottom:16px;">📭</div>
+                                No debug assessments found yet.<br>
+                                Run some tests in the <a href="/debug-ui" style="color:#e05530;">Debug UI</a> first.
+                            </td>
+                        </tr>
+                    `;
+                    updateStats([]);
+                    return;
+                }
+
+                renderTable(data);
+                updateStats(data);
+
+            } catch (err) {
+                console.error('Error:', err);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="16" style="text-align:center;padding:40px;color:#ef4444;">
+                            ❌ Error loading data: ${err.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function getScoreClass(score) {
+            if (score === null || score === undefined || isNaN(score)) return '';
+            if (score >= 80) return 'score-good';
+            if (score >= 60) return 'score-ok';
+            return 'score-poor';
+        }
+
+        function formatScore(score) {
+            if (score === null || score === undefined || isNaN(score)) return '—';
+            return Math.round(score);
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('tableBody');
+
+            tbody.innerHTML = data.map((r, index) => {
+                // Extract scores from full_result or use top-level fields
+                const overall = r.overall_score || r.overall || r.overall_score;
+                const pace = r.pace_score || r.pace?.score;
+                const wpm = r.pace_wpm || r.pace?.wpm;
+                const filler = r.filler_score || r.filler?.score;
+                const fillerCount = r.filler_count || r.filler?.count;
+                const pronunciation = r.pronunciation_score || r.pronunciation?.score;
+                const grammar = r.grammar_score || r.grammar?.score;
+                const errors = r.grammar_errors || r.grammar?.errors;
+                const clarity = r.clarity_score || r.clarity?.score;
+                const vocabulary = r.vocabulary_score || r.vocabulary?.score;
+                const cefr = r.cefr_level || r.cefr?.level;
+                const archetype = r.archetype || r.archetype?.archetype;
+                const transcript = r.transcript || '—';
+
+                const timestamp = r.timestamp || '—';
+
+                return `
+                    <tr>
+                        <td class="id-cell">#${r.id}</td>
+                        <td style="font-size:12px;color:#7a6e66;">${timestamp}</td>
+                        <td class="transcript-cell" title="${transcript}">${transcript.length > 60 ? transcript.substring(0, 60) + '...' : transcript}</td>
+                        <td class="${getScoreClass(overall)}">${formatScore(overall)}</td>
+                        <td class="${getScoreClass(pace)}">${formatScore(pace)}</td>
+                        <td>${wpm !== null && wpm !== undefined ? Math.round(wpm) : '—'}</td>
+                        <td class="${getScoreClass(filler)}">${formatScore(filler)}</td>
+                        <td>${fillerCount !== null && fillerCount !== undefined ? fillerCount : '—'}</td>
+                        <td class="${getScoreClass(pronunciation)}">${formatScore(pronunciation)}</td>
+                        <td class="${getScoreClass(grammar)}">${formatScore(grammar)}</td>
+                        <td>${errors !== null && errors !== undefined ? errors : '—'}</td>
+                        <td class="${getScoreClass(clarity)}">${formatScore(clarity)}</td>
+                        <td class="${getScoreClass(vocabulary)}">${formatScore(vocabulary)}</td>
+                        <td>${cefr || '—'}</td>
+                        <td>${archetype ? `<span class="archetype-badge">${archetype}</span>` : '—'}</td>
+                        <td>
+                            <button class="btn btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="viewDetails(${index})">📄 Details</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateStats(data) {
+            const scores = data.map(r => r.overall_score || r.overall || r.overall_score).filter(s => s !== null && s !== undefined && !isNaN(s));
+
+            document.getElementById('statTotal').textContent = data.length;
+
+            if (scores.length > 0) {
+                const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                const best = Math.max(...scores);
+                const worst = Math.min(...scores);
+
+                document.getElementById('statAvg').textContent = avg.toFixed(1);
+                document.getElementById('statAvg').className = 'number ' + getScoreClass(avg);
+                document.getElementById('statBest').textContent = best.toFixed(1);
+                document.getElementById('statBest').className = 'number ' + getScoreClass(best);
+                document.getElementById('statWorst').textContent = worst.toFixed(1);
+                document.getElementById('statWorst').className = 'number ' + getScoreClass(worst);
+            } else {
+                document.getElementById('statAvg').textContent = '—';
+                document.getElementById('statBest').textContent = '—';
+                document.getElementById('statWorst').textContent = '—';
+            }
+
+            document.getElementById('resultCount').textContent = `${data.length} results`;
+        }
+
+        function viewDetails(index) {
+            const r = assessments[index];
+            const modal = document.getElementById('detailModal');
+            const body = document.getElementById('modalBody');
+
+            document.getElementById('modalTitle').textContent = `Assessment #${r.id} - ${r.timestamp || 'Unknown date'}`;
+
+            // Build detail rows
+            const fields = [
+                ['ID', r.id],
+                ['Timestamp', r.timestamp],
+                ['Transcript', r.transcript || '—'],
+                ['Overall Score', formatScore(r.overall_score || r.overall)],
+                ['Pace Score', formatScore(r.pace_score || r.pace?.score)],
+                ['WPM', r.pace_wpm || r.pace?.wpm || '—'],
+                ['Filler Score', formatScore(r.filler_score || r.filler?.score)],
+                ['Filler Count', r.filler_count || r.filler?.count || '—'],
+                ['Pronunciation Score', formatScore(r.pronunciation_score || r.pronunciation?.score)],
+                ['Grammar Score', formatScore(r.grammar_score || r.grammar?.score)],
+                ['Grammar Errors', r.grammar_errors || r.grammar?.errors || '—'],
+                ['Clarity Score', formatScore(r.clarity_score || r.clarity?.score)],
+                ['Vocabulary Score', formatScore(r.vocabulary_score || r.vocabulary?.score)],
+                ['CEFR Level', r.cefr_level || r.cefr?.level || '—'],
+                ['Archetype', r.archetype || r.archetype?.archetype || '—'],
+                ['Feedback', r.feedback || '—'],
+            ];
+
+            body.innerHTML = fields.map(([label, value]) => `
+                <div class="detail-row">
+                    <span class="detail-label">${label}</span>
+                    <span class="detail-value">${value}</span>
+                </div>
+            `).join('');
+
+            // Add full JSON if available
+            if (r.full_result) {
+                body.innerHTML += `
+                    <div class="detail-row" style="flex-direction:column;align-items:stretch;">
+                        <span class="detail-label" style="width:100%;margin-bottom:8px;">Full JSON</span>
+                        <pre>${JSON.stringify(r.full_result, null, 2)}</pre>
+                    </div>
+                `;
+            }
+
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').classList.remove('active');
+        }
+
+        // Close modal on overlay click
+        document.getElementById('detailModal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+
+        // Enter key on password input
+        document.getElementById('passwordInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') login();
+        });
+
+        function exportCSV() {
+            if (!assessments || assessments.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            // Build CSV
+            const headers = ['ID', 'Timestamp', 'Transcript', 'Overall', 'Pace', 'WPM', 'Filler', 'Filler Count',
+                'Pronunciation', 'Grammar', 'Errors', 'Clarity', 'Vocabulary', 'CEFR', 'Archetype'
+            ];
+
+            let csv = headers.join(',') + '\n';
+
+            assessments.forEach(r => {
+                const row = [
+                    r.id,
+                    r.timestamp || '',
+                    (r.transcript || '').replace(/,/g, ' '),
+                    r.overall_score || r.overall || '',
+                    r.pace_score || r.pace?.score || '',
+                    r.pace_wpm || r.pace?.wpm || '',
+                    r.filler_score || r.filler?.score || '',
+                    r.filler_count || r.filler?.count || '',
+                    r.pronunciation_score || r.pronunciation?.score || '',
+                    r.grammar_score || r.grammar?.score || '',
+                    r.grammar_errors || r.grammar?.errors || '',
+                    r.clarity_score || r.clarity?.score || '',
+                    r.vocabulary_score || r.vocabulary?.score || '',
+                    r.cefr_level || r.cefr?.level || '',
+                    r.archetype || r.archetype?.archetype || ''
+                ];
+                csv += row.join(',') + '\n';
+            });
+
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `debug_assessments_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+
+</body>
+</html>
