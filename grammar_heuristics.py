@@ -50,6 +50,11 @@ BE_FORMS = {"am", "is", "are", "was", "were", "be", "been", "being"}
 DO_FORMS = {"do", "does", "did", "don't", "doesn't", "didn't", "dont", "doesnt", "didnt"}
 HAVE_AUX = {"have", "has", "had"}
 
+# Coordinating conjunctions — used to prevent the verb-stacking detector
+# from looking across a conjunction and flagging nonsense like "it and trying".
+CONJUNCTIONS = {"and", "or", "but", "nor", "so", "for", "yet"}
+
+
 def _regular_3sg(v: str) -> str:
     if v.endswith(("s", "sh", "ch", "x", "z", "o")):
         return v + "es"
@@ -96,6 +101,34 @@ def _expand_verb_forms(bases: set) -> set:
 
 
 CATENATIVE_GERUND_VERBS = _expand_verb_forms(_CATENATIVE_BASE_VERBS)
+
+# Verbs that legitimately take a gerund as a direct object (not as a progressive
+# complement). These are verbs where the gerund is the object of the verb, e.g.,
+# "combines programming" = combines [the act of programming].
+# Includes common inflections so the stacking check doesn't misflag them.
+# This was added to fix false positives like "it combines programming" →
+# the detector was incorrectly treating this as a progressive construction
+# when it's actually a valid verb-object relationship.
+# FIX: Added "think" and its inflections to fix false positive:
+# "I think learning" is valid (gerund as object of "think").
+VERBS_THAT_TAKE_GERUND_OBJECTS = {
+    "combine", "combines", "combined", "combining",
+    "know", "knows", "knew", "known", "knowing",
+    "understand", "understands", "understood", "understanding",
+    "consider", "considers", "considered", "considering",
+    "imagine", "imagines", "imagined", "imagining",
+    "appreciate", "appreciates", "appreciated", "appreciating",
+    "recognize", "recognizes", "recognized", "recognizing",
+    "realize", "realizes", "realized", "realizing",
+    "believe", "believes", "believed", "believing",
+    "recall", "recalls", "recalled", "recalling",
+    "describe", "describes", "described", "describing",
+    "explain", "explains", "explained", "explaining",
+    "discuss", "discusses", "discussed", "discussing",
+    "remember", "remembers", "remembered", "remembering",
+    "forget", "forgets", "forgot", "forgotten", "forgetting",
+    "think", "thinks", "thought", "thinking",  # FIX: added for "I think learning"
+}
 
 # Fixed "go + gerund" collocations ("go swimming") that are correct as-is.
 GO_FIXED_GERUNDS = {
@@ -220,7 +253,6 @@ VERB_FORMS = {
     "forget": {"3sg": "forgets", "past": "forgot"},
     "ride": {"3sg": "rides", "past": "rode"},
     "throw": {"3sg": "throws", "past": "threw"},
-    "cook": {"3sg": "cooks", "past": "cooked"},
     "join": {"3sg": "joins", "past": "joined"},
     "move": {"3sg": "moves", "past": "moved"},
     "open": {"3sg": "opens", "past": "opened"},
@@ -233,6 +265,40 @@ VERB_FORMS = {
 # instead using the third-person-singular form).
 _THIRD_SG_TO_BASE = {forms["3sg"]: base for base, forms in VERB_FORMS.items()}
 
+# Present-tense "be" agreement (Pass 2c). Correct present-tense "be" form
+# for each subject pronoun — "I is"/"he am"/"they is" etc. are among the
+# single most common beginner mistakes and, unlike the was/were pair
+# (Pass 2b), weren't covered by any existing detector: "be" isn't in
+# VERB_FORMS (see Pass 2b's docstring), and Pass 2b only handles the past
+# tense. No subjunctive ambiguity applies here (that only concerns "were"),
+# so every pronoun is safe to check both directions.
+PRESENT_BE_CORRECT = {"i": "am", "he": "is", "she": "is", "it": "is",
+                       "we": "are", "you": "are", "they": "are"}
+_PRESENT_BE_FORMS = {"am", "is", "are"}
+
+# Singular noun subjects (Pass 2d) — common role/family/animate nouns that
+# often act as a sentence's subject in beginner speaking-test answers ("My
+# sister have two children"). Pass 2's own SVA check only looks at pronoun
+# subjects (PRONOUNS_3SG = he/she/it), so a noun subject like "sister" was
+# invisible to it. Kept intentionally short/concrete, and only ever matched
+# by exact singular form (so "sisters have" — correct — never collides).
+SINGULAR_SUBJECT_NOUNS = {
+    "sister", "brother", "mother", "father", "friend", "teacher", "doctor",
+    "manager", "boss", "dog", "cat", "child", "baby", "student", "neighbor",
+    "colleague", "husband", "wife", "son", "daughter", "uncle", "aunt",
+    "cousin", "grandmother", "grandfather",
+}
+# If one of these appears shortly before the noun, the noun is likely the
+# object of a perception/causative verb, not the sentence's subject — "I
+# saw my sister have breakfast" is correct as-is (bare infinitive
+# complement), so this guards Pass 2d against exactly that false positive.
+_PERCEPTION_CAUSATIVE_VERBS = {
+    "saw", "see", "sees", "seeing", "watched", "watch", "watches", "watching",
+    "heard", "hear", "hears", "hearing", "felt", "feel", "feels", "feeling",
+    "let", "lets", "letting", "made", "make", "makes", "making",
+    "helped", "help", "helps", "helping", "noticed", "notice", "notices", "noticing",
+}
+
 TIME_MARKER_RE = re.compile(
     r"\byesterday\b|\blast\s+(?:night|week|month|year|summer|winter|weekend)\b"
     r"|\bago\b|\bwhen\s+i\s+was\s+(?:a\s+)?(?:child|young|kid|little)\b",
@@ -241,6 +307,81 @@ TIME_MARKER_RE = re.compile(
 
 _TOKEN_RE = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 _SENT_SPLIT_RE = re.compile(r"[.!?]+")
+
+# ── Preposition collocation errors (Pass 5) ────────────────────────────────
+# Curated (anchor_word, wrong_preposition) -> correct_preposition pairs.
+# These are among the most common, well-documented ESL preposition mistakes
+# ("interested on" for "interested in", "married with" for "married to",
+# etc.). Matched as an exact adjacent bigram after a fixed anchor word, so
+# precision is effectively the same as the rest of this module's curated
+# lexicons: the anchor word disambiguates the sense, so there's no realistic
+# correct sentence where "interested" is immediately followed by "on".
+PREPOSITION_COLLOCATIONS = {
+    ("interested", "on"): "in",
+    ("interested", "for"): "in",
+    ("married", "with"): "to",
+    ("depend", "of"): "on",
+    ("depends", "of"): "on",
+    ("depending", "of"): "on",
+    ("afraid", "from"): "of",
+    ("capable", "to"): "of",
+    ("good", "in"): "at",
+    ("bad", "in"): "at",
+    ("arrived", "to"): "at",
+    ("arrive", "to"): "at",
+    ("congratulate", "for"): "on",
+    ("angry", "for"): "about",
+    ("proud", "with"): "of",
+    ("different", "with"): "from",
+    ("similar", "with"): "to",
+    ("responsible", "of"): "for",
+}
+
+# "discuss about"/"discuss regarding" — extra preposition after a verb that
+# is already transitive in English ("discuss the plan", not "discuss about
+# the plan"). Modeled separately since the fix is a deletion, not a swap.
+REDUNDANT_PREPOSITION_VERBS = {
+    "discuss": {"about"},
+    "discusses": {"about"},
+    "discussed": {"about"},
+    "discussing": {"about"},
+}
+
+# ── Missing indefinite article (Pass 6) ─────────────────────────────────────
+# Trigger verbs commonly followed by a singular countable direct object.
+# Deliberately narrow — verbs whose most common speaking-test object is a
+# concrete, clearly-countable noun (as opposed to "have breakfast"/"have
+# fun", which are correct without an article).
+ARTICLE_TRIGGER_VERBS = {
+    "have", "has", "had", "need", "needs", "needed", "want", "wants", "wanted",
+    "buy", "buys", "bought", "get", "gets", "got", "find", "finds", "found",
+    "own", "owns", "owned", "borrow", "borrows", "borrowed", "wear", "wears", "wore",
+    "see", "sees", "saw", "bring", "brings", "brought",
+}
+# Singular countable nouns with low risk of being the first half of a
+# compound noun ("car insurance", "phone bill", ...) in ordinary
+# speaking-test transcripts. Kept intentionally short and unambiguous.
+ARTICLE_SINGULAR_NOUNS = {
+    "car", "house", "dog", "cat", "job", "book", "phone", "laptop", "umbrella",
+    "bicycle", "apple", "banana", "pen", "pencil", "camera", "guitar", "ticket",
+    "headache", "watch", "wallet", "notebook", "chair", "table", "computer",
+    "shirt", "jacket", "bag", "backpack", "orange", "mango", "sandwich",
+}
+# Tokens that legitimately follow the noun in a correct sentence ending the
+# noun phrase there (end of sentence is handled separately as "None").
+# If the noun is instead followed by another content word, it's likely part
+# of a compound noun or further-modified NP this heuristic isn't built to
+# parse — skip rather than risk a false positive.
+_ARTICLE_BOUNDARY_FOLLOWERS = {
+    "and", "but", "or", "so", "because", "when", "while", "yesterday", "today",
+    "tomorrow", "here", "there", "now", "then", "to", "for", "with", "from",
+    "at", "in", "on", "before", "after", "since", "until", "though", "although",
+}
+# NOTE: an existing determiner ("a car", "my car", "his car", ...) between
+# the trigger verb and the noun already breaks the adjacency this pass
+# requires (verb and noun must be *immediately* adjacent tokens), so those
+# correct cases never reach the check below — no separate determiner
+# lexicon is needed to exclude them.
 
 
 def _tokenize(text):
@@ -311,6 +452,10 @@ def detect_learner_errors(text: str) -> list:
     # ── Pass 1: missing past tense with an explicit past-time expression ──
     # Highest priority: "Yesterday I go to college" should be corrected to
     # "went", not flagged as a present-tense agreement issue.
+    #
+    # FIX: Check if the verb is preceded by a modal (would, could, should, etc.)
+    # "would send" is correct English (past habit construction) and should not
+    # be flagged. Look back up to 2 tokens to see if there's a modal.
     for i in range(n - 1):
         word, start, _ = tokens[i]
         wl = word.lower()
@@ -319,6 +464,20 @@ def detect_learner_errors(text: str) -> list:
         vword, vstart, vend = tokens[i + 1]
         vl = vword.lower()
         if vl in VERB_FORMS and TIME_MARKER_RE.search(sentence_for(start)):
+            # Check if the verb is preceded by a modal (look back up to 2 tokens)
+            modal_found = False
+            for j in range(max(0, i), i):
+                if tokens[j][0].lower() in MODALS:
+                    modal_found = True
+                    break
+            # Also check if there's a modal immediately before the verb (i+1 is the verb)
+            # Actually, MODALS are before the main verb, so check i (the subject position)
+            # but modals can appear after the subject: "I would send" -> tokens: [I][would][send]
+            # So check i-1 (the token before the verb) which could be the modal
+            if i > 0 and tokens[i][0].lower() in MODALS:
+                modal_found = True
+            if modal_found:
+                continue  # Don't flag modal + verb constructions
             correct_verb = VERB_FORMS[vl]["past"]
             if correct_verb != vl:
                 issues.append(_make_issue(
@@ -398,6 +557,62 @@ def detect_learner_errors(text: str) -> list:
             ))
             flagged.add(i + 1)
 
+    # ── Pass 2c: "be" present-tense agreement (am/is/are) ──────────────────
+    # "I is" / "he am" / "they is" — see PRESENT_BE_CORRECT above for why
+    # this is a separate pass from Pass 2b (was/were) and wasn't already
+    # covered by Pass 2.
+    for i in range(n - 1):
+        if (i + 1) in flagged:
+            continue
+        word, start, _ = tokens[i]
+        wl = word.lower()
+        if wl not in PRESENT_BE_CORRECT:
+            continue
+        vword, vstart, vend = tokens[i + 1]
+        vl = vword.lower()
+        if vl not in _PRESENT_BE_FORMS:
+            continue
+        correct_be = PRESENT_BE_CORRECT[wl]
+        if vl == correct_be:
+            continue
+        issues.append(_make_issue(
+            wrong=vword, correct=correct_be, offset=vstart, length=vend - vstart,
+            message=f"'{word}' takes '{correct_be}', not '{vl}'.",
+            rule_id="LEARNER_BE_PRESENT_AGREEMENT", category="Subject-Verb Agreement",
+            context=sentence_for(start),
+        ))
+        flagged.add(i + 1)
+
+    # ── Pass 2d: subject-verb agreement for a singular noun subject ────────
+    # "My sister have two children" -> "has". Same idea as Pass 2's
+    # pronoun-subject check, extended to a curated list of common noun
+    # subjects — see SINGULAR_SUBJECT_NOUNS / _PERCEPTION_CAUSATIVE_VERBS
+    # above for the lexicon and the perception-verb false-positive guard.
+    for i in range(n - 1):
+        if (i + 1) in flagged:
+            continue
+        word, start, _ = tokens[i]
+        wl = word.lower()
+        if wl not in SINGULAR_SUBJECT_NOUNS:
+            continue
+        vword, vstart, vend = tokens[i + 1]
+        vl = vword.lower()
+        if vl not in VERB_FORMS:
+            continue
+        correct_verb = VERB_FORMS[vl]["3sg"]
+        if correct_verb == vl:
+            continue
+        lookback_words = {t[0].lower() for t in tokens[max(0, i - 3):i]}
+        if lookback_words & _PERCEPTION_CAUSATIVE_VERBS:
+            continue  # noun is likely the object of a perception/causative verb, not the subject
+        issues.append(_make_issue(
+            wrong=vword, correct=correct_verb, offset=vstart, length=vend - vstart,
+            message=f"'{word}' needs a third-person-singular verb — use '{correct_verb}' instead of '{vword}'.",
+            rule_id="LEARNER_SUBJECT_VERB_AGREEMENT", category="Subject-Verb Agreement",
+            context=sentence_for(start),
+        ))
+        flagged.add(i + 1)
+
     # ── Pass 3: do/does negation agreement ─────────────────────────────────
     for i in range(n - 1):
         word, start, _ = tokens[i]
@@ -445,6 +660,12 @@ def detect_learner_errors(text: str) -> list:
 
         # 4b: pronoun + another finite verb + gerund — two main verbs
         # stacked with no linking construction (e.g. "I wear eating").
+        # FIXES APPLIED:
+        #   - v2l not in VERBS_THAT_TAKE_GERUND_OBJECTS: prevents false positives
+        #     for verbs that legitimately take a gerund as a direct object
+        #     (e.g., "combines programming" is valid, "think learning" is valid).
+        #   - v2l not in CONJUNCTIONS: prevents the detector from looking across
+        #     a conjunction and flagging nonsense like "it and trying".
         if (i + 1) not in flagged and i + 2 < n:
             v3, v3start, v3end = tokens[i + 2]
             v3l = v3.lower()
@@ -454,6 +675,8 @@ def detect_learner_errors(text: str) -> list:
                     and v2l not in DO_FORMS
                     and v2l not in HAVE_AUX
                     and v2l not in CATENATIVE_GERUND_VERBS
+                    and v2l not in VERBS_THAT_TAKE_GERUND_OBJECTS
+                    and v2l not in CONJUNCTIONS
                     and not (v2l in GO_VERB_SURFACE_FORMS and v3l in GO_FIXED_GERUNDS)):
                 issues.append(_make_issue(
                     wrong=f"{word} {v2}", correct=f"{word} {correct_be}",
@@ -464,6 +687,70 @@ def detect_learner_errors(text: str) -> list:
                     context=sentence_for(start),
                 ))
                 flagged.add(i + 1)
+
+    # ── Pass 5: preposition collocation errors ─────────────────────────────
+    # Wrong preposition after a fixed anchor word ("interested on" ->
+    # "interested in") and redundant preposition after a transitive verb
+    # ("discuss about" -> "discuss"). Both offline, both a simple curated
+    # lookup — see PREPOSITION_COLLOCATIONS / REDUNDANT_PREPOSITION_VERBS.
+    for i in range(n - 1):
+        w1, s1, e1 = tokens[i]
+        w2, s2, e2 = tokens[i + 1]
+        key = (w1.lower(), w2.lower())
+        correct_prep = PREPOSITION_COLLOCATIONS.get(key)
+        if correct_prep:
+            issues.append(_make_issue(
+                wrong=f"{w1} {w2}", correct=f"{w1} {correct_prep}",
+                offset=s1, length=e2 - s1,
+                message=f"'{w1}' takes the preposition '{correct_prep}', not '{w2}'.",
+                rule_id="LEARNER_PREPOSITION_COLLOCATION", category="Preposition",
+                context=sentence_for(s1),
+            ))
+            continue
+        redundant = REDUNDANT_PREPOSITION_VERBS.get(w1.lower())
+        if redundant and w2.lower() in redundant:
+            issues.append(_make_issue(
+                wrong=f"{w1} {w2}", correct=w1,
+                offset=s1, length=e2 - s1,
+                message=f"'{w1}' doesn't take '{w2}' here — say '{w1}' directly.",
+                rule_id="LEARNER_REDUNDANT_PREPOSITION", category="Preposition",
+                context=sentence_for(s1),
+            ))
+
+    # ── Pass 6: missing indefinite article before a singular countable
+    # noun ("I have car" -> "I have a car"). See ARTICLE_* lexicons above
+    # for why this stays narrow (verb + noun both curated, boundary check
+    # on what follows the noun) rather than a generic determiner-checker.
+    for i in range(n - 1):
+        vword, vstart, vend = tokens[i]
+        vl = vword.lower()
+        if vl not in ARTICLE_TRIGGER_VERBS:
+            continue
+        nword, nstart, nend = tokens[i + 1]
+        nl = nword.lower()
+        if nl not in ARTICLE_SINGULAR_NOUNS:
+            continue
+        # If the noun ends the sentence (terminal punctuation, or the very
+        # end of the transcript) that's an unambiguous NP boundary — no
+        # need to look at the next token at all. Otherwise, only fire when
+        # the next *word* is itself a clear clause/phrase boundary (a
+        # conjunction, another time/place word, etc.) — if it's some other
+        # content word, this is likely a compound noun ("car insurance")
+        # or a further-modified NP this simple adjacency check can't parse,
+        # so skip rather than risk a false positive.
+        between_and_after = text[nend:tokens[i + 2][1]] if i + 2 < n else text[nend:]
+        if re.search(r"[.!?,;:]", between_and_after):
+            pass  # sentence/clause boundary right after the noun — fire below
+        elif i + 2 < n and tokens[i + 2][0].lower() not in _ARTICLE_BOUNDARY_FOLLOWERS:
+            continue  # likely a compound noun / further-modified NP — skip
+        article = "an" if nl[:1] in "aeiou" else "a"
+        issues.append(_make_issue(
+            wrong=f"{vword} {nword}", correct=f"{vword} {article} {nword}",
+            offset=vstart, length=nend - vstart,
+            message=f"'{nword}' needs an article — say '{article} {nword}'.",
+            rule_id="LEARNER_MISSING_ARTICLE", category="Article",
+            context=sentence_for(vstart),
+        ))
 
     return issues
 

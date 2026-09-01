@@ -9,3 +9,4 @@ __pycache__/
 *.wav
 *.json
 *.Zone.Identifier
+speechocean_data/
