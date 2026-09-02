@@ -17,6 +17,8 @@ behavior ever changes, that copy needs to change too.
 """
 from __future__ import annotations
 
+import shutil
+import tempfile
 import wave
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -35,6 +37,97 @@ def wav_duration_seconds(path) -> float:
     if rate <= 0 or frames <= 0:
         return 0.0
     return frames / rate
+
+
+# ── WAV chunking for STT providers with a per-request duration cap ────────
+#
+# Used by stt_provider.SaarasSTTProvider for audio longer than Saaras's
+# synchronous REST cap (see SAARAS_REST_MAX_SECONDS there). Pure stdlib
+# `wave` — no ffmpeg subprocess, no numpy: each chunk is a raw copy of a
+# contiguous block of frames from the source file, written back out with
+# the exact same channel count / sample width / frame rate, so there is no
+# re-encoding step that could corrupt audio or drift the sample rate.
+# Memory cost is one chunk's worth of frames at a time (tens of KB for a
+# ~25s 16kHz mono chunk), not the whole file.
+
+def split_wav_into_chunks(wav_path, chunk_seconds: float,
+                           min_last_chunk_seconds: float = 1.0) -> List[Path]:
+    """Split a WAV file into sequential, non-overlapping chunks of at most
+    `chunk_seconds` each, in original order, preserving sample rate/channels/
+    sample width exactly.
+
+    If the source is already <= chunk_seconds long, returns [Path(wav_path)]
+    unchanged — no copy, no temp dir — so callers can call this
+    unconditionally without paying a split cost for short audio.
+
+    Otherwise writes chunk files into a fresh temp directory (one per call)
+    and returns their paths in order. A too-short trailing chunk (shorter
+    than `min_last_chunk_seconds`) is merged into the previous chunk instead
+    of being sent on its own, so a provider never receives a near-empty
+    final request.
+
+    Callers own cleanup of the temp directory this creates — see
+    cleanup_chunk_files() below. Never raises for a missing/corrupt file;
+    returns [Path(wav_path)] in that case, same as the "short enough"
+    passthrough, so the caller's own transcribe attempt on it produces the
+    real error.
+    """
+    wav_path = Path(wav_path)
+    try:
+        with wave.open(str(wav_path), "rb") as src:
+            n_channels = src.getnchannels()
+            sampwidth = src.getsampwidth()
+            framerate = src.getframerate()
+            total_frames = src.getnframes()
+            if framerate <= 0 or total_frames <= 0:
+                return [wav_path]
+            duration = total_frames / framerate
+            if duration <= chunk_seconds:
+                return [wav_path]
+
+            frames_per_chunk = max(1, int(chunk_seconds * framerate))
+            min_last_frames = int(min_last_chunk_seconds * framerate)
+
+            # Frame counts per chunk, then merge a too-short trailing chunk
+            # into the one before it.
+            boundaries = []
+            remaining = total_frames
+            while remaining > 0:
+                take = min(frames_per_chunk, remaining)
+                boundaries.append(take)
+                remaining -= take
+            if len(boundaries) >= 2 and boundaries[-1] < min_last_frames:
+                boundaries[-2] += boundaries[-1]
+                boundaries.pop()
+
+            out_dir = Path(tempfile.mkdtemp(prefix="sttchunks_"))
+            chunk_paths = []
+            src.rewind()
+            for idx, n_frames in enumerate(boundaries):
+                data = src.readframes(n_frames)
+                chunk_path = out_dir / f"chunk_{idx:04d}.wav"
+                with wave.open(str(chunk_path), "wb") as dst:
+                    dst.setnchannels(n_channels)
+                    dst.setsampwidth(sampwidth)
+                    dst.setframerate(framerate)
+                    dst.writeframes(data)
+                chunk_paths.append(chunk_path)
+            return chunk_paths
+    except (wave.Error, EOFError, FileNotFoundError, OSError):
+        return [wav_path]
+
+
+def cleanup_chunk_files(chunk_paths: List[Path], original_path) -> None:
+    """Delete the temp directory created by split_wav_into_chunks(), if any.
+    No-op (never touches the caller's original file) when chunk_paths is
+    just the unchanged passthrough of `original_path` — the "short enough,
+    no chunking happened" case. Never raises."""
+    if not chunk_paths:
+        return
+    if len(chunk_paths) == 1 and Path(chunk_paths[0]) == Path(original_path):
+        return
+    chunk_dir = Path(chunk_paths[0]).parent
+    shutil.rmtree(chunk_dir, ignore_errors=True)
 
 
 # ── Pause / hesitation analysis from word-level timestamps ────────────────

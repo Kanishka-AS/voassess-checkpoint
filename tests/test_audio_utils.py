@@ -11,7 +11,10 @@ import wave
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from audio_utils import wav_duration_seconds, analyze_pauses
+from audio_utils import (
+    wav_duration_seconds, analyze_pauses,
+    split_wav_into_chunks, cleanup_chunk_files,
+)
 
 
 def _write_wav(path, seconds: float, rate: int = 16000, channels: int = 1, sampwidth: int = 2):
@@ -119,3 +122,73 @@ def test_words_out_of_order_are_sorted_before_gap_calculation():
     r = analyze_pauses(segs, duration=3.0)
     assert r["pause_count"] == 1
     assert r["avg_pause_ms"] > 0
+
+
+# ── split_wav_into_chunks() / cleanup_chunk_files() ─────────────────────────
+
+def test_short_audio_passthrough_no_chunking(tmp_path):
+    path = tmp_path / "short.wav"
+    _write_wav(path, seconds=10.0)
+    chunks = split_wav_into_chunks(path, chunk_seconds=25.0)
+    assert chunks == [path]
+
+
+def test_long_audio_split_into_sequential_chunks(tmp_path):
+    path = tmp_path / "long.wav"
+    _write_wav(path, seconds=70.0, rate=16000)
+    chunks = split_wav_into_chunks(path, chunk_seconds=25.0)
+    assert len(chunks) == 3
+    durations = [wav_duration_seconds(c) for c in chunks]
+    assert abs(durations[0] - 25.0) < 0.01
+    assert abs(durations[1] - 25.0) < 0.01
+    assert abs(durations[2] - 20.0) < 0.01
+    assert abs(sum(durations) - 70.0) < 0.01
+    cleanup_chunk_files(chunks, path)
+
+
+def test_chunks_preserve_sample_rate_and_channels(tmp_path):
+    path = tmp_path / "long.wav"
+    _write_wav(path, seconds=60.0, rate=16000, channels=1, sampwidth=2)
+    chunks = split_wav_into_chunks(path, chunk_seconds=25.0)
+    import wave
+    for c in chunks:
+        with wave.open(str(c), "rb") as wf:
+            assert wf.getframerate() == 16000
+            assert wf.getnchannels() == 1
+            assert wf.getsampwidth() == 2
+    cleanup_chunk_files(chunks, path)
+
+
+def test_short_trailing_chunk_merged_into_previous(tmp_path):
+    """A trailing chunk shorter than min_last_chunk_seconds must be merged
+    into the previous chunk rather than sent on its own."""
+    path = tmp_path / "long.wav"
+    # 25s chunk_seconds -> naive split would be 25s + 25s + 0.5s; the 0.5s
+    # tail should be folded into the second chunk instead.
+    _write_wav(path, seconds=50.5, rate=16000)
+    chunks = split_wav_into_chunks(path, chunk_seconds=25.0, min_last_chunk_seconds=1.0)
+    assert len(chunks) == 2
+    durations = [wav_duration_seconds(c) for c in chunks]
+    assert abs(durations[0] - 25.0) < 0.01
+    assert abs(durations[1] - 25.5) < 0.01
+    cleanup_chunk_files(chunks, path)
+
+
+def test_cleanup_removes_temp_chunk_dir(tmp_path):
+    path = tmp_path / "long.wav"
+    _write_wav(path, seconds=70.0)
+    chunks = split_wav_into_chunks(path, chunk_seconds=25.0)
+    chunk_dir = chunks[0].parent
+    assert chunk_dir.exists()
+    cleanup_chunk_files(chunks, path)
+    assert not chunk_dir.exists()
+    # Original source file must be untouched.
+    assert path.exists()
+
+
+def test_cleanup_is_noop_for_unchunked_passthrough(tmp_path):
+    path = tmp_path / "short.wav"
+    _write_wav(path, seconds=5.0)
+    chunks = split_wav_into_chunks(path, chunk_seconds=25.0)
+    cleanup_chunk_files(chunks, path)
+    assert path.exists()  # never deletes the caller's original file

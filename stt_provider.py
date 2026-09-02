@@ -8,9 +8,12 @@ of transcript+segments -> pronunciation score).
         ▼
     STTProviderRegistry
         │
-        ├── WhisperSTTProvider  ("whisper") — default/fallback, the pre-existing
-        │                                      transcribe_wav() logic, unchanged.
+        ├── WhisperSTTProvider  ("whisper") — fallback only now; the
+        │                                      pre-existing transcribe_wav()
+        │                                      logic, unchanged.
         └── SaarasSTTProvider   ("saaras")  — Sarvam's Saaras v3 speech-to-text.
+                                               Primary/default provider (see
+                                               app.py's DEFAULT_STT_PROVIDER).
 
 app.py never branches on provider name here either — it asks the registry for
 a provider and calls `.transcribe()`.
@@ -31,11 +34,19 @@ is a well-documented, real fit: Sarvam's `/speech-to-text` endpoint (model
     when with_timestamps=true was sent)
   - Response (error): {"error": {"message": "...", "code": "...",
     "request_id": "..."}}
-  - REST endpoint hard cap: audio must be <= 30 seconds. Longer audio needs
-    Sarvam's separate Batch API (POST /speech-to-text/job/v1, async,
-    poll-then-fetch) — not implemented here; see is_available()/transcribe()
-    below, which refuse (available=False) rather than send an oversized
-    request that Sarvam will reject.
+  - REST endpoint hard cap: audio must be <= 30 seconds. LONG AUDIO: rather
+    than Sarvam's separate async Batch API (POST /speech-to-text/job/v1,
+    poll-then-fetch), SaarasSTTProvider.transcribe() below handles this
+    itself by splitting audio over the cap into sequential, non-overlapping
+    chunks (audio_utils.split_wav_into_chunks(), pure stdlib `wave`, no
+    re-encoding) of SAARAS_CHUNK_SECONDS each, sending each chunk through
+    the same synchronous /speech-to-text call in original order, and joining
+    the raw per-chunk transcripts with a single space. No dedup/cleanup step
+    runs on the joined text — see module docstring point 3 below. If any
+    chunk's request fails, transcription stops there and available=False is
+    returned with a detail naming which chunk failed and why; prior chunks'
+    text is discarded rather than returned as a silently-partial transcript.
+    Temp chunk files are removed in a `finally` block regardless of outcome.
 
 KNOWN LIMITATION — timestamps are chunk/sentence-level, not word-level, and
 carry no confidence value (documented explicitly: "each entry covers a
@@ -69,8 +80,15 @@ from pathlib import Path
 
 import httpx
 
+from audio_utils import split_wav_into_chunks, cleanup_chunk_files
+
 STT_PROVIDER_NAMES = ("whisper", "saaras")
 SAARAS_REST_MAX_SECONDS = 30.0
+# Per-chunk size used once audio exceeds SAARAS_REST_MAX_SECONDS. Kept
+# comfortably under the 30s cap (not right up against it) so that merging a
+# too-short trailing chunk into the previous one (see
+# audio_utils.split_wav_into_chunks) can never push a chunk over the cap.
+SAARAS_CHUNK_SECONDS = 25.0
 
 
 class STTProviderError(Exception):
@@ -109,9 +127,15 @@ class STTProvider(ABC):
 # ── Provider 1: Whisper (existing behavior, moved here as-is) ─────────────────
 
 class WhisperSTTProvider(STTProvider):
-    """The pre-existing (and, until now, only) transcription implementation.
-    Always available — local model, no external service. Default/fallback
-    provider."""
+    """The pre-existing (and, until this migration, only) transcription
+    implementation. Always available — local model, no external service.
+    Saaras is now DEFAULT_STT_PROVIDER (see app.py); Whisper is used when a
+    caller explicitly requests "whisper" and it fails (app.py's
+    resolve_stt() falls back to the default, Saaras, in that case). If
+    Saaras itself (as the default) fails, resolve_stt() does NOT fall back
+    to Whisper — that would silently swap in a transcript from a model
+    known to normalize away the fillers/disfluencies this pipeline needs to
+    preserve, so a Saaras failure is surfaced as a clear error instead."""
 
     name = "whisper"
 
@@ -158,8 +182,9 @@ SARVAM_API_URL = os.environ.get("SARVAM_API_URL", "https://api.sarvam.ai").rstri
 
 class SaarasSTTProvider(STTProvider):
     """Adapter for Sarvam's Saaras v3 speech-to-text (REST, synchronous,
-    <=30s audio). See module docstring for the documented request/response
-    shape and the word-level-timestamp limitation.
+    <=30s per request — audio longer than that is chunked internally, see
+    _transcribe_chunked()). See module docstring for the documented
+    request/response shape and the word-level-timestamp limitation.
 
     Credentials: SARVAM_API_KEY environment variable. Never hard-coded."""
 
@@ -189,22 +214,30 @@ class SaarasSTTProvider(STTProvider):
                 detail="Saaras STT requires the recorded audio, which wasn't provided.",
             )
 
-        # The synchronous REST endpoint caps audio at 30 seconds — refuse
-        # cleanly rather than send a request Sarvam will reject. (Longer
-        # audio needs Sarvam's separate async Batch API, not implemented
-        # here.) Duration check is dependency-free (stdlib `wave`, same
-        # approach as audio_utils.wav_duration_seconds) to avoid a circular
-        # import on app.py.
+        # Duration check is dependency-free (stdlib `wave`, same approach as
+        # audio_utils.wav_duration_seconds) to avoid a circular import on
+        # app.py.
         duration = self._wav_duration_seconds(wav_path)
         if duration and duration > SAARAS_REST_MAX_SECONDS:
-            return STTResult(
-                transcript="", segments=[], provider=self.name, available=False,
-                detail=f"Saaras's synchronous STT endpoint accepts audio up to "
-                       f"{SAARAS_REST_MAX_SECONDS:.0f}s; this recording is "
-                       f"{duration:.1f}s. Longer recordings need Sarvam's Batch "
-                       f"API, which isn't implemented yet.",
-            )
+            return self._transcribe_chunked(wav_path, duration)
 
+        transcript, err = self._transcribe_one(wav_path)
+        if err:
+            return STTResult(transcript="", segments=[], provider=self.name,
+                              available=False, detail=err)
+        # Deliberately segments=[] — see module docstring: Saaras's timestamps
+        # are chunk/sentence-level with no confidence value, so there is no
+        # honest way to fill Whisper's per-word {"word","probability"} shape
+        # from it. Downstream pronunciation scoring (WhisperConfidenceProvider)
+        # already handles empty segments gracefully (falls back to its
+        # default score, no fabricated per-word issues).
+        return STTResult(transcript=transcript, segments=[], provider=self.name, available=True)
+
+    def _transcribe_one(self, wav_path: Path) -> tuple[str | None, str | None]:
+        """One Saaras REST call for one <=30s WAV file/chunk. Returns
+        (transcript, None) on success or (None, detail) on failure. Never
+        raises — mirrors transcribe()'s own no-raise contract, since this is
+        called both directly and once per chunk from _transcribe_chunked()."""
         data = {"model": "saaras:v3", "mode": "transcribe", "with_timestamps": "true"}
         if self.language_code:
             data["language_code"] = self.language_code
@@ -221,26 +254,63 @@ class SaarasSTTProvider(STTProvider):
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
-            return STTResult(
-                transcript="", segments=[], provider=self.name, available=False,
-                detail=f"Saaras STT request failed: {e}",
-            )
+            return None, f"Saaras STT request failed: {e}"
 
         transcript = (body.get("transcript") or "").strip()
         if not transcript:
+            return None, ("Saaras STT returned an empty transcript — please speak "
+                           "clearly and try again.")
+        return transcript, None
+
+    def _transcribe_chunked(self, wav_path: Path, duration: float) -> STTResult:
+        """Long-audio path: split into sequential <=SAARAS_CHUNK_SECONDS
+        chunks, transcribe each in order through _transcribe_one(), and join
+        the raw results with a single space. No cleanup/dedup/normalization
+        of the joined text — fillers, repetitions, and false starts that
+        Saaras returned are passed through untouched (see requirement 3 in
+        the module this backs). If a chunk fails, transcription stops there:
+        available=False is returned with a detail naming the failing chunk,
+        and any earlier chunks' text is discarded rather than returned as a
+        transcript with a silent gap in it."""
+        chunk_paths = split_wav_into_chunks(wav_path, SAARAS_CHUNK_SECONDS)
+
+        if len(chunk_paths) == 1:
+            # split_wav_into_chunks() decided chunking wasn't needed after
+            # all (e.g. duration was right at the boundary) — no temp files
+            # were created, nothing to clean up.
+            transcript, err = self._transcribe_one(chunk_paths[0])
+            if err:
+                return STTResult(transcript="", segments=[], provider=self.name,
+                                  available=False, detail=err)
+            return STTResult(transcript=transcript, segments=[], provider=self.name, available=True)
+
+        transcripts: list[str] = []
+        try:
+            for i, chunk_path in enumerate(chunk_paths, start=1):
+                transcript, err = self._transcribe_one(chunk_path)
+                if err:
+                    return STTResult(
+                        transcript="", segments=[], provider=self.name, available=False,
+                        detail=(f"Saaras STT failed on chunk {i}/{len(chunk_paths)} of this "
+                                f"{duration:.1f}s recording ({err}). No transcript is "
+                                f"returned for this recording — the {i - 1} chunk(s) that "
+                                f"did transcribe successfully are not silently returned as "
+                                f"if they were the complete result."),
+                    )
+                transcripts.append(transcript)
+        finally:
+            cleanup_chunk_files(chunk_paths, wav_path)
+
+        merged = " ".join(transcripts).strip()
+        if not merged:
             return STTResult(
                 transcript="", segments=[], provider=self.name, available=False,
-                detail="Saaras STT returned an empty transcript — please speak "
-                       "clearly and try again.",
+                detail="Saaras STT returned an empty transcript across all chunks — "
+                       "please speak clearly and try again.",
             )
-
-        # Deliberately segments=[] — see module docstring: Saaras's timestamps
-        # are chunk/sentence-level with no confidence value, so there is no
-        # honest way to fill Whisper's per-word {"word","probability"} shape
-        # from it. Downstream pronunciation scoring (WhisperConfidenceProvider)
-        # already handles empty segments gracefully (falls back to its
-        # default score, no fabricated per-word issues).
-        return STTResult(transcript=transcript, segments=[], provider=self.name, available=True)
+        # Deliberately segments=[] here too, same reasoning as the
+        # single-request path above.
+        return STTResult(transcript=merged, segments=[], provider=self.name, available=True)
 
     @staticmethod
     def _wav_duration_seconds(wav_path) -> float:

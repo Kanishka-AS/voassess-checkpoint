@@ -39,7 +39,9 @@ def test_validate_stt_provider_rejects_unknown_name():
         assert e.status_code == 422
 
 
-def test_resolve_stt_default_whisper(tmp_path):
+def test_resolve_stt_explicit_whisper_request(tmp_path):
+    """Requesting "whisper" explicitly still works even though it's no
+    longer the default provider."""
     wav = tmp_path / "x.wav"
     wav.write_bytes(b"RIFF....WAVEfmt ")
     requested, used = app.resolve_stt("whisper", wav)
@@ -48,25 +50,28 @@ def test_resolve_stt_default_whisper(tmp_path):
     assert used.transcript == "hello world"
 
 
-def test_resolve_stt_saaras_not_configured_falls_back_to_whisper(monkeypatch, tmp_path):
+def test_resolve_stt_default_saaras_not_configured_raises_no_silent_fallback(monkeypatch, tmp_path):
+    """Saaras is DEFAULT_STT_PROVIDER now — if it's unconfigured, that must
+    surface as a clear error, not a silent switch to Whisper's transcript
+    (which would quietly normalize away fillers/disfluencies)."""
+    from fastapi import HTTPException
     monkeypatch.delenv("SARVAM_API_KEY", raising=False)
     import stt_provider as sp
     monkeypatch.setitem(app.stt_registry._providers, "saaras", sp.SaarasSTTProvider(api_key=""))
     wav = tmp_path / "x.wav"
     wav.write_bytes(b"RIFF....WAVEfmt ")
-    requested, used = app.resolve_stt("saaras", wav)
-    assert requested.available is False
-    assert requested.provider == "saaras"
-    # Fallback actually produced the transcript, and honestly reports whisper
-    # as the provider that ran.
-    assert used.provider == "whisper"
-    assert used.transcript == "hello world"
+    try:
+        app.resolve_stt("saaras", wav)
+        assert False, "expected HTTPException"
+    except HTTPException as e:
+        assert e.status_code == 400
+        assert "not configured" in e.detail
 
 
 def test_stt_providers_status_endpoint_shape():
     import asyncio
     result = asyncio.run(app.stt_providers())
-    assert result["default"] == "whisper"
+    assert result["default"] == "saaras"
     assert set(result["providers"]) == {"whisper", "saaras"}
     assert result["providers"]["whisper"]["available"] is True
 

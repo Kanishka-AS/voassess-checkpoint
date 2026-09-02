@@ -6,7 +6,9 @@ UI/backend contract bugs found while tracing them:
 
   1. Whisper STT -> transcript + word timings
   2. Saaras STT -> transcript with no fabricated word timings
-  3. Saaras failure -> explicit Whisper fallback (provider distinguishable)
+  3. Explicit Whisper request failure -> fallback to Saaras (the default;
+     provider distinguishable); Saaras (default) failure -> clear error,
+     no silent Whisper fallback
   4. LanguageTool /v2/analyze -> linguistic_analysis reaches final response,
      AND languagetool_errors reaches it too (the actual bug: it didn't)
   5. filler detected by backend -> reaches final API response's
@@ -137,26 +139,59 @@ def test_saaras_pronunciation_never_fabricated(monkeypatch):
 # ---- 3 & 7. STT requested vs actual provider always distinguishable --------
 
 def test_stt_requested_vs_actual_distinguishable_on_fallback(monkeypatch, tmp_path):
-    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+    """Saaras is now DEFAULT_STT_PROVIDER, so an explicit *whisper* request
+    that fails is the fallback case (falls back to Saaras, the default) —
+    the reverse of when Whisper was the default."""
     import stt_provider as sp
-    monkeypatch.setitem(app.stt_registry._providers, "saaras", sp.SaarasSTTProvider(api_key=""))
+
+    class _EmptyWhisperModel:
+        def transcribe(self, *a, **kw):
+            return {"text": "   ", "segments": []}
+
+    monkeypatch.setitem(app.stt_registry._providers, "whisper",
+                         sp.WhisperSTTProvider(_EmptyWhisperModel()))
+
+    class _StubSaarasResponse:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {"transcript": "hello from saaras"}
+
+    monkeypatch.setattr(sp.httpx, "post", lambda *a, **kw: _StubSaarasResponse())
+    monkeypatch.setitem(app.stt_registry._providers, "saaras", sp.SaarasSTTProvider(api_key="fake-key"))
+
     wav = tmp_path / "x.wav"
     wav.write_bytes(b"RIFF....WAVEfmt ")
-    requested, used = app.resolve_stt("saaras", wav)
-    assert requested.provider == "saaras"
+    requested, used = app.resolve_stt("whisper", wav)
+    assert requested.provider == "whisper"
     assert requested.available is False
-    assert used.provider == "whisper"
+    assert used.provider == "saaras"
     assert used.available is True
     # A caller building an /assess-style response can always tell what was
     # asked for vs what actually ran:
     stt_info = {
         "provider": used.provider,
-        "requested_provider": "saaras",
+        "requested_provider": "whisper",
         "available": requested.available,
         "detail": requested.detail,
     }
     assert stt_info["requested_provider"] != stt_info["provider"]
     assert stt_info["detail"]
+
+
+def test_stt_default_saaras_failure_is_not_silently_replaced_by_whisper(monkeypatch, tmp_path):
+    """The DEFAULT provider (Saaras) failing must surface as a clear error,
+    not a silent switch to Whisper's (filler-normalizing) transcript."""
+    from fastapi import HTTPException
+    import stt_provider as sp
+    monkeypatch.setitem(app.stt_registry._providers, "saaras", sp.SaarasSTTProvider(api_key=""))
+    wav = tmp_path / "x.wav"
+    wav.write_bytes(b"RIFF....WAVEfmt ")
+    try:
+        app.resolve_stt("saaras", wav)
+        assert False, "expected HTTPException"
+    except HTTPException as e:
+        assert e.status_code == 400
+        assert "not configured" in e.detail
 
 
 # ---- 1, 2, 8. word_timings is provider-neutral and never mislabels Saaras --

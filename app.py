@@ -107,7 +107,14 @@ _whisper = whisper.load_model("base")
 # STT provider registry — constructed here (not as a module-level singleton
 # inside stt_provider.py) because WhisperSTTProvider wraps the already-loaded
 # `_whisper` model above rather than loading its own.
-DEFAULT_STT_PROVIDER = "whisper"
+#
+# Saaras (Sarvam) is the primary/default STT provider — it preserves raw
+# fillers/disfluencies ("um", "uh", repetitions, false starts) the way this
+# pipeline's transcript needs to, which Whisper tends to normalize away.
+# Whisper stays registered as the always-available fallback for an explicit
+# whisper request that fails (see resolve_stt() below) and as the "whisper"
+# option in the stt_provider selector.
+DEFAULT_STT_PROVIDER = "saaras"
 stt_registry = STTProviderRegistry({
     "whisper": WhisperSTTProvider(_whisper),
     "saaras": SaarasSTTProvider(),
@@ -128,20 +135,24 @@ def validate_stt_provider(name: str) -> str:
 
 def resolve_stt(provider_name: str, wav_path: Path):
     """Resolve + transcribe through the registry, then apply the same
-    fallback-with-honesty rule pronunciation providers use: if the requested
-    STT provider can't produce a transcript (not configured, audio too long
-    for Saaras's sync endpoint, etc.), fall back to Whisper for the actual
-    transcript/segments, but return BOTH results so the caller can report
-    what really happened (never silently relabel Whisper's output as
-    Saaras's). Raises HTTPException(400) only if even the Whisper fallback
-    produces no transcript — that's a genuine "couldn't hear you" case, not
-    a provider-availability issue."""
+    fallback-with-honesty rule pronunciation providers use: if a
+    *non-default* requested STT provider can't produce a transcript (not
+    configured, request failed, etc.), fall back to the default provider
+    (Saaras) for the actual transcript/segments, but return BOTH results so
+    the caller can report what really happened (never silently relabel one
+    provider's output as another's).
+
+    If the DEFAULT provider itself (Saaras) fails, there is deliberately no
+    fallback to Whisper here — raise HTTPException(400) with Saaras's own
+    detail instead. Silently substituting Whisper's transcript would hide a
+    real failure behind output from a model that's known to normalize away
+    the fillers/disfluencies ("um", "uh", repetitions, false starts) this
+    pipeline needs to preserve — see stt_provider.SaarasSTTProvider. A clear
+    error is more useful here than a quietly-degraded transcript."""
     requested = stt_registry.get(provider_name).transcribe(wav_path)
     if requested.available:
         return requested, requested
     if provider_name == DEFAULT_STT_PROVIDER:
-        # The default itself failed (e.g. Whisper produced no transcript) —
-        # nothing to fall back to.
         raise HTTPException(400, requested.detail or "Could not transcribe — please speak clearly and try again.")
     fallback = stt_registry.get(DEFAULT_STT_PROVIDER).transcribe(wav_path)
     if not fallback.available:
@@ -742,6 +753,7 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
         transcript,
         linguistic_analysis,
         duration_seconds=duration,
+        audio_path=wav_path
     )
     filler_count = fillers["count"]
     found = summarize_words(fillers["occurrences"])
