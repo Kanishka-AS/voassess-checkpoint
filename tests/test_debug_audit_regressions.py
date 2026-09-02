@@ -113,15 +113,21 @@ def test_pronunciation_provider_independent_of_stt_provider(monkeypatch):
     """Selecting Saaras as STT must not silently select (or fabricate) a
     Saaras pronunciation score. With no SARVAM_API_KEY configured and
     pronunciation_provider left at the default, the score must still come
-    from whisper_confidence — the two selections are orthogonal."""
+    from the default pronunciation provider (allosaurus_g2p — Whisper-free;
+    see pronunciation_provider.py), never from "saaras" — the two
+    selections are orthogonal. No audio is passed here, so the default
+    provider honestly reports unavailable too (there is no Whisper fallback
+    to silently paper over that) — the point of this test is that the
+    *provider name* is never "saaras", not that a score of 0 is meaningful."""
     monkeypatch.setattr(app._lt_provider, "check_and_analyze", _lt_unavailable)
     monkeypatch.delenv("SARVAM_API_KEY", raising=False)
     wav = None
     segments_from_saaras = []  # SaarasSTTProvider always returns segments=[]
     r = app.score_free_speech("This is a test.", segments_from_saaras, duration=5.0,
                                pronunciation_provider=app.DEFAULT_PRONUNCIATION_PROVIDER)
-    assert r["pronunciation"]["provider"] == "whisper_confidence"
-    assert r["pronunciation"]["requested_provider"] == "whisper_confidence"
+    assert r["pronunciation"]["provider"] == "allosaurus_g2p"
+    assert r["pronunciation"]["requested_provider"] == "allosaurus_g2p"
+    assert r["pronunciation"]["provider"] != "saaras"
 
 
 def test_saaras_pronunciation_never_fabricated(monkeypatch):
@@ -131,7 +137,7 @@ def test_saaras_pronunciation_never_fabricated(monkeypatch):
     r = app.score_free_speech("This is a test.", [], duration=5.0,
                                pronunciation_provider="saaras")
     assert r["pronunciation"]["requested_provider"] == "saaras"
-    assert r["pronunciation"]["provider"] == "whisper_confidence"  # honest fallback
+    assert r["pronunciation"]["provider"] == "allosaurus_g2p"  # honest fallback, not saaras
     assert r["pronunciation"]["available"] is False
     assert r["pronunciation"]["detail"]  # a real reason, not blank
 

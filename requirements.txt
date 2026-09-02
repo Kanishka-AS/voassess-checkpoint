@@ -12,3 +12,13 @@ python-dotenv>=1.0.0
 # container over HTTP (see LANGUAGETOOL_URL in app.py). No local Java
 # needed anymore since we don't spawn LanguageTool in this process.
 language-tool-python>=2.7.1
+# Pronunciation assessment (default provider, "allosaurus_g2p" — see
+# pronunciation_provider.py / pronunciation/ package). Offline/CPU, no
+# network calls at request time (allosaurus downloads its ~43MB uni2005
+# model once, on first use, via its own installer). These three are no
+# longer optional: they replace Whisper as the dependency the default
+# pronunciation-assessment path actually needs. Versions pinned to what was
+# verified against this codebase's pronunciation/ package.
+allosaurus==1.0.2
+panphon==0.22.2
+eng-to-ipa==0.0.2

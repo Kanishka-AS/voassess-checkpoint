@@ -253,6 +253,19 @@ class SaarasSTTProvider(STTProvider):
                 )
             resp.raise_for_status()
             body = resp.json()
+
+        except httpx.HTTPStatusError as e:
+            try:
+                err_body = e.response.json().get("error", {})
+                reason = err_body.get("message") or e.response.text
+            except Exception:
+                reason = e.response.text
+
+            return None, (
+                f"Saaras STT request failed "
+                f"({e.response.status_code}): {reason}"
+            )
+
         except Exception as e:
             return None, f"Saaras STT request failed: {e}"
 

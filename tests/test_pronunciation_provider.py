@@ -13,15 +13,16 @@ import pronunciation_provider as pp
 
 # ---- Registry ---------------------------------------------------------------
 
-def test_registry_has_all_four_providers():
+def test_registry_has_all_five_providers():
     reg = pp.PronunciationProviderRegistry()
-    for name in ("whisper_confidence", "saaras", "local_llm", "gop"):
+    for name in ("allosaurus_g2p", "whisper_confidence", "saaras", "local_llm", "gop"):
         provider = reg.get(name)
         assert provider.name == name
 
 
 def test_registry_resolves_correct_class():
     reg = pp.PronunciationProviderRegistry()
+    assert isinstance(reg.get("allosaurus_g2p"), pp.AllosaurusG2PPronunciationProvider)
     assert isinstance(reg.get("whisper_confidence"), pp.WhisperConfidenceProvider)
     assert isinstance(reg.get("saaras"), pp.SaarasPronunciationProvider)
     assert isinstance(reg.get("local_llm"), pp.LocalLLMPronunciationProvider)
@@ -51,10 +52,61 @@ def test_registry_status_reports_availability():
     assert status["gop"]["available"] is False
 
 
-# ---- Default provider (whisper_confidence) — existing scoring unchanged -----
+# ---- Default provider is now allosaurus_g2p — no Whisper in this path -------
 
-def test_default_provider_selection_is_whisper_confidence():
-    assert pp.pronunciation_registry.get("whisper_confidence").name == "whisper_confidence"
+def test_default_provider_selection_is_allosaurus_g2p():
+    assert pp.pronunciation_registry.get("allosaurus_g2p").name == "allosaurus_g2p"
+
+
+def test_allosaurus_g2p_module_never_imports_whisper():
+    """Static guard: the module backing the default pronunciation provider
+    must not import whisper anywhere, so pronunciation assessment can run
+    even in an environment with no Whisper installed at all."""
+    import inspect
+    src = inspect.getsource(pp)
+    for line in src.splitlines():
+        stripped = line.strip()
+        assert not stripped.startswith("import whisper")
+        assert not stripped.startswith("from whisper")
+
+
+def test_allosaurus_g2p_requires_wav_path():
+    provider = pp.AllosaurusG2PPronunciationProvider()
+    result = provider.assess("hello world", segments=[], wav_path=None)
+    assert result.available is False
+    assert result.provider == "allosaurus_g2p"
+    assert "audio" in result.detail.lower()
+
+
+def test_allosaurus_g2p_requires_nonempty_transcript():
+    provider = pp.AllosaurusG2PPronunciationProvider()
+    result = provider.assess("", segments=[], wav_path="/tmp/does-not-matter.wav")
+    assert result.available is False
+    assert result.provider == "allosaurus_g2p"
+
+
+def test_allosaurus_g2p_never_produces_per_word_issues():
+    """Core honesty constraint: no forced alignment exists in this project,
+    so this provider must never fabricate a per-word issues list, even on
+    a successful assessment."""
+    provider = pp.AllosaurusG2PPronunciationProvider()
+    if not provider.is_available():
+        import pytest
+        pytest.skip("allosaurus/panphon/eng-to-ipa not installed in this environment")
+    import subprocess, shutil, tempfile, os as _os
+    if not shutil.which("espeak-ng"):
+        import pytest
+        pytest.skip("espeak-ng not installed; cannot synthesize test audio")
+    with tempfile.TemporaryDirectory() as tmp:
+        wav = _os.path.join(tmp, "t.wav")
+        subprocess.run(["espeak-ng", "-v", "en-us", "-w", wav, "I like apples"],
+                        check=True, capture_output=True)
+        result = provider.assess("I like apples", segments=[], wav_path=wav)
+    assert result.provider == "allosaurus_g2p"
+    assert result.issues == []
+    if result.available:
+        assert 0.0 <= result.score <= 100.0
+        assert "Whisper" not in result.methodology or "No Whisper" in result.methodology
 
 
 def test_whisper_confidence_always_available():

@@ -436,8 +436,21 @@ def determine_voice_archetype(pace_s: float, filler_s: float, pronun_s: float,
 # as part of the pronunciation-provider migration — logic unchanged, just
 # relocated so it's one provider among several behind a common interface.
 # See pronunciation_provider.py and DEFAULT_PRONUNCIATION_PROVIDER below.
+#
+# DEFAULT changed from "whisper_confidence" to "allosaurus_g2p": pronunciation
+# assessment must not depend on Whisper (Sarvam Saaras v3 is the primary STT
+# and the single source of truth for transcription — see
+# pronunciation_provider.py's module docstring for the full rationale).
+# "allosaurus_g2p" assesses audio against the expected pronunciation of the
+# transcript's words (G2P + Allosaurus acoustic evidence, fully offline/CPU)
+# instead of treating any ASR's own confidence as a pronunciation signal.
+# WhisperConfidenceProvider still exists and can still be selected explicitly
+# (pronunciation_provider="whisper_confidence") but is no longer the default
+# or the fallback used when another explicitly-requested provider is
+# unavailable — see resolve_pronunciation()'s fallback in score_free_speech()
+# below, which now falls back to this same Whisper-free default.
 
-DEFAULT_PRONUNCIATION_PROVIDER = "whisper_confidence"
+DEFAULT_PRONUNCIATION_PROVIDER = "allosaurus_g2p"
 
 
 def validate_pronunciation_provider(name: str) -> str:
@@ -773,13 +786,14 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
     # Pronunciation & Clarity — resolved through the provider registry (see
     # pronunciation_provider.py). If the requested provider couldn't produce
     # a real assessment (not configured / not implemented — gop, local_llm,
-    # or an incomplete saaras integration), fall back to whisper_confidence
-    # for the *score itself* (so clarity/overall/cefr/archetype downstream
-    # still get a real number to blend), but keep the honest
-    # available/detail info in the response's pronunciation.provider_status
-    # so the UI never claims a provider ran when it didn't — see requirement
-    # "UI should not say 'Saaras' if the backend actually used another
-    # provider."
+    # or an incomplete saaras integration), fall back to the default
+    # pronunciation provider (allosaurus_g2p — Whisper-free, see
+    # pronunciation_provider.py) for the *score itself* (so clarity/overall/
+    # cefr/archetype downstream still get a real number to blend), but keep
+    # the honest available/detail info in the response's
+    # pronunciation.provider_status so the UI never claims a provider ran
+    # when it didn't — see requirement "UI should not say 'Saaras' if the
+    # backend actually used another provider."
     pronun_result = resolve_pronunciation(pronunciation_provider, transcript, segments, wav_path)
     if pronun_result.available:
         pronun_s = pronun_result.score
@@ -788,7 +802,12 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
         pronunciation_provider_detail = None
         pronunciation_provider_methodology = pronun_result.methodology
     else:
-        fallback = resolve_pronunciation(DEFAULT_PRONUNCIATION_PROVIDER, transcript, segments, wav_path)
+        # If the caller already requested the default provider and it's the
+        # one that just failed, re-resolving it again would just repeat the
+        # exact same (already-known) failure for no benefit — reuse
+        # pronun_result instead of calling it a second time.
+        fallback = (pronun_result if pronunciation_provider == DEFAULT_PRONUNCIATION_PROVIDER
+                    else resolve_pronunciation(DEFAULT_PRONUNCIATION_PROVIDER, transcript, segments, wav_path))
         pronun_s = fallback.score
         pronun_issues = fallback.issues
         pronunciation_provider_used = fallback.provider

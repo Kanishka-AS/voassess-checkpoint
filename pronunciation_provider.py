@@ -1,17 +1,40 @@
 """
 Pronunciation provider architecture.
 
-Phase 1 of the mentor-directed migration: make the pronunciation assessment
-method selectable, without redesigning the scoring formula and without
-implementing Custom GOP yet.
+────────────────────────────────────────────────────────────────────────────
+UPDATE (Whisper removed from the default pronunciation path):
+
+Sarvam's Saaras v3 is the project's primary/default STT (see app.py,
+DEFAULT_STT_PROVIDER = "saaras"), and pronunciation assessment must not
+depend on Whisper — not Whisper confidence, not Whisper word probabilities,
+not Whisper timings, and no second-pass Whisper transcription. Sarvam
+remains the single source of truth for the transcript.
+
+DEFAULT_PRONUNCIATION_PROVIDER (see app.py) is now "allosaurus_g2p":
+audio + whatever transcript the STT step already produced (Sarvam by
+default) -> pronunciation/g2p.py (text -> expected IPA phones) ->
+pronunciation/allosaurus_provider.py (Allosaurus CTC acoustic-model
+evidence for those expected phones, entirely offline/CPU, no network call,
+no Whisper import anywhere in this path). See AllosaurusG2PPronunciationProvider
+below for the full honesty/limitation disclosure (short version: this is an
+UTTERANCE-LEVEL acoustic-evidence signal, not true phoneme- or word-level
+scoring — no forced alignment exists in this project, so no per-word
+`issues` are produced by this provider; see the class docstring).
+
+WhisperConfidenceProvider is kept, unmodified, as an explicitly-selectable,
+non-default option (same pattern as "gop" being kept as a selectable-but-
+unavailable placeholder) — nothing production-default touches it anymore.
 
     PronunciationProvider (interface)
         │
         ▼
     PronunciationProviderRegistry
         │
-        ├── WhisperConfidenceProvider   ("whisper_confidence") — default/fallback,
-        │                                 the pre-existing scoring logic, unchanged.
+        ├── AllosaurusG2PPronunciationProvider ("allosaurus_g2p") — default.
+        │                                 G2P + Allosaurus acoustic evidence,
+        │                                 no Whisper anywhere in this path.
+        ├── WhisperConfidenceProvider   ("whisper_confidence") — legacy,
+        │                                 explicit-selection only, unchanged.
         ├── SaarasPronunciationProvider ("saaras")              — primary, per mentor.
         ├── LocalLLMPronunciationProvider ("local_llm")         — secondary, if configured.
         └── GOPPronunciationProvider    ("gop")                 — ON HOLD, placeholder only.
@@ -45,6 +68,11 @@ Before this can be the real primary provider, someone needs to either:
       proxy), or
   (c) point to a different Sarvam endpoint intended for pronunciation
       assessment.
+
+This is why "saaras" is not the pronunciation default even though it is the
+STT default: it has no real pronunciation signal to give yet. "allosaurus_g2p"
+is what actually satisfies "assess pronunciation from Sarvam's transcript +
+audio, without Whisper" today.
 ────────────────────────────────────────────────────────────────────────────
 
 Configuration:
@@ -85,7 +113,7 @@ class PronunciationResult:
     methodology: str | None = field(default=None)
 
 
-PRONUNCIATION_PROVIDER_NAMES = ("whisper_confidence", "saaras", "local_llm", "gop")
+PRONUNCIATION_PROVIDER_NAMES = ("allosaurus_g2p", "whisper_confidence", "saaras", "local_llm", "gop")
 
 
 class PronunciationProviderError(Exception):
@@ -114,14 +142,192 @@ class PronunciationProvider(ABC):
     def assess(self, transcript: str, segments: list, wav_path: Path) -> PronunciationResult:
         """Produce a pronunciation assessment for one recording.
 
-        transcript: the Whisper transcript (already computed upstream; every
-                    provider gets it so it doesn't need to re-transcribe just
-                    to know what was said).
-        segments:   Whisper's segments/words (with per-word probabilities) —
-                    what WhisperConfidenceProvider scores from directly.
+        transcript: the transcript already produced upstream by whichever
+                    STT provider actually ran (Sarvam Saaras v3 by default;
+                    Whisper only if explicitly selected/used as STT) — no
+                    provider here re-transcribes just to know what was said.
+        segments:   Whisper-shaped segments/words (with per-word
+                    probabilities), populated ONLY when Whisper was the STT
+                    provider used — Saaras (the default STT) always returns
+                    segments=[] (see stt_provider.py). Only
+                    WhisperConfidenceProvider reads this field; providers
+                    that must not depend on Whisper (e.g. allosaurus_g2p,
+                    the default) ignore it entirely and use transcript +
+                    wav_path instead.
         wav_path:   path to the converted 16kHz mono WAV — what an
-                    audio-based external provider (Saaras) would upload.
+                    audio-based provider (Saaras, allosaurus_g2p) needs.
         """
+
+
+# ── Provider 0: Allosaurus + G2P (default — no Whisper anywhere) ──────────────
+#
+# Wraps the already-existing, already-tested pronunciation/ package (see
+# pronunciation/schemas.py, g2p.py, allosaurus_normalizer.py,
+# phoneme_analyzer.py, allosaurus_provider.py) rather than reimplementing any
+# of that logic here. That package was previously unused by app.py (see
+# pronunciation/test_audio.py's own docstring, which explicitly notes app.py
+# did not import it) — this class is what actually wires it into production.
+#
+# SIGNAL: audio (wav_path) + `transcript` (whatever the STT step already
+# produced — Sarvam's Saaras v3 by default; this class does not care which
+# STT produced it and never re-transcribes) -> pronunciation.g2p (text ->
+# expected IPA phones) -> pronunciation.allosaurus_provider (Allosaurus CTC
+# acoustic-model posteriors for those expected phones). Fully offline/CPU
+# (~43MB model, downloaded once via allosaurus's own installer, then read
+# from local disk) and gives a real, expected-content-aware comparison
+# between the recording and the words that were actually said — as opposed
+# to Whisper-confidence or Allosaurus-self-confidence, both of which only
+# measure "how sure was the ASR about its own decoding," not "does this
+# audio match the expected pronunciation of these specific words."
+#
+# HONESTY CONSTRAINTS (do not violate elsewhere in this class):
+#   - This is UTTERANCE-LEVEL evidence, not word-level or true phoneme-level.
+#     No forced alignment exists anywhere in this project (nothing in
+#     requirements.txt provides it, and none is added here — see task
+#     instructions: don't introduce a large/expensive dependency). Every
+#     PhonemeEvidence.alignment_quality is "none": for each expected phone,
+#     Allosaurus reports the single strongest matching frame ANYWHERE in the
+#     whole recording, not at the specific timestamp where that phone/word
+#     was supposed to occur (see pronunciation/phoneme_analyzer.py's own
+#     docstring). If a phone occurs more than once in the sentence, every
+#     occurrence currently reports the same (strongest) evidence.
+#   - Because of the above, `issues` (the per-word list) is ALWAYS []. This
+#     provider has no reliable way to say "word X was mispronounced" —
+#     doing so would fabricate word-level precision this signal does not
+#     have. (Contrast WhisperConfidenceProvider, which has real per-word
+#     timestamps and can honestly report per-word issues.)
+#   - The 0-100 `score` is an explicit, disclosed, UNCALIBRATED linear
+#     rescaling (mean acoustic posterior x 100) of evidence for the expected
+#     phones that are actually present in Allosaurus's phone inventory. It
+#     is NOT validated against any labeled pronunciation-error dataset (none
+#     exists in this project — see pronunciation/schemas.py's module
+#     docstring, which is why that package's own scripts never compute a
+#     score at all). This provider reports it anyway because the production
+#     scoring engine (score_free_speech) requires a numeric score from every
+#     provider — but every result's `methodology` says explicitly that this
+#     is acoustic-evidence strength, not a validated accuracy grade.
+
+_ALLOSAURUS_G2P_MODEL_NAME = "uni2005"
+
+
+class AllosaurusG2PPronunciationProvider(PronunciationProvider):
+    """Default pronunciation provider. See module-level comment block above
+    this class for the full signal description and honesty constraints."""
+
+    name = "allosaurus_g2p"
+
+    def __init__(self):
+        # Lazy singleton: loading the Allosaurus model reads model.pt from
+        # disk (and, on a completely fresh install, triggers allosaurus's
+        # own one-time model download) — expensive enough that this must
+        # happen once per process, on first real use, not at import time
+        # (registry construction must stay cheap — see the module-level
+        # `pronunciation_registry` singleton comment further down this
+        # file). Mirrors the pattern the pre-existing optional Allosaurus
+        # secondary-signal code already used.
+        self._provider = None
+        self._init_error: str | None = None
+        self._checked = False
+
+    def _get_provider(self):
+        if self._checked:
+            return self._provider
+        self._checked = True
+        try:
+            from pronunciation.allosaurus_provider import AllosaurusProvider
+            self._provider = AllosaurusProvider(model_name=_ALLOSAURUS_G2P_MODEL_NAME)
+        except Exception as e:
+            # Covers: allosaurus/panphon/eng_to_ipa not installed, model
+            # download/load failure, etc. Cached so a broken install costs
+            # one attempt per process, not one attempt per request.
+            self._init_error = f"{type(e).__name__}: {e}"
+            self._provider = None
+        return self._provider
+
+    def is_available(self) -> bool:
+        """Whether this provider CAN run in this environment at all (model
+        loads successfully) — independent of whether any particular
+        request's text/audio happens to produce a usable signal (that is
+        reported per-call via assess()'s own available=False, not here)."""
+        return self._get_provider() is not None
+
+    def assess(self, transcript: str, segments: list, wav_path: Path) -> PronunciationResult:
+        provider = self._get_provider()
+        if provider is None:
+            return PronunciationResult(
+                score=0.0, issues=[], provider=self.name, available=False,
+                detail=("Allosaurus/G2P pronunciation assessment could not be "
+                         f"initialized in this environment: {self._init_error}"),
+            )
+        if not wav_path:
+            return PronunciationResult(
+                score=0.0, issues=[], provider=self.name, available=False,
+                detail="Allosaurus/G2P pronunciation assessment requires the "
+                       "recorded audio, which wasn't provided to this call.",
+            )
+        if not transcript or not transcript.strip():
+            return PronunciationResult(
+                score=0.0, issues=[], provider=self.name, available=False,
+                detail="No transcript was available to assess pronunciation "
+                       "against (nothing to G2P).",
+            )
+
+        try:
+            result = provider.analyze(str(wav_path), transcript)
+        except Exception as e:
+            return PronunciationResult(
+                score=0.0, issues=[], provider=self.name, available=False,
+                detail=f"Allosaurus pronunciation analysis failed: {type(e).__name__}: {e}",
+            )
+
+        if not result.expected_phonemes:
+            return PronunciationResult(
+                score=0.0, issues=[], provider=self.name, available=False,
+                detail="G2P produced no phonemes for this transcript (the "
+                       "word(s) may not be in the G2P dictionary) — no "
+                       "pronunciation signal could be computed.",
+            )
+
+        scored = [ev.max_posterior for ev in result.phoneme_evidence if ev.in_model_inventory]
+        if not scored:
+            return PronunciationResult(
+                score=0.0, issues=[], provider=self.name, available=False,
+                detail="None of this transcript's expected phones are in "
+                       "Allosaurus's phone inventory — no pronunciation "
+                       "signal could be computed.",
+            )
+
+        mean_posterior = sum(scored) / len(scored)
+        score = round(max(10.0, min(100.0, mean_posterior * 100)), 1)
+
+        methodology = (
+            "Pronunciation evidence derived from the transcript already "
+            "produced by STT (Sarvam Saaras v3 by default) — G2P'd to "
+            "expected IPA phones and compared against Allosaurus's "
+            f"({provider.model_name}) own CPU acoustic-model posteriors for "
+            "those specific phones. No Whisper transcription, confidence, "
+            "word probabilities, or timings are used anywhere in this "
+            "signal. UTTERANCE-LEVEL EVIDENCE ONLY: no forced alignment "
+            "exists in this project, so each expected phone's evidence is "
+            "the strongest match found anywhere in the recording, not at a "
+            "specific word's timestamp — per-word issues are therefore "
+            "never produced by this provider (issues=[] always; see "
+            "alignment_quality on each phone in the underlying provider). "
+            f"Score is an explicit, UNCALIBRATED linear rescaling (mean "
+            f"posterior x 100) of acoustic evidence for the "
+            f"{len(scored)}/{len(result.expected_phonemes)} expected phones "
+            "present in Allosaurus's phone inventory — it reflects "
+            "acoustic-evidence strength, not a validated pronunciation-"
+            "accuracy grade (no labeled pronunciation-error dataset exists "
+            "in this project for that calibration)."
+        )
+        if result.warnings:
+            methodology += " Provider warnings: " + " | ".join(result.warnings)
+
+        return PronunciationResult(
+            score=score, issues=[], provider=self.name, available=True,
+            methodology=methodology,
+        )
 
 
 # ── Provider 1: Whisper confidence (existing behavior, moved here as-is) ──────
@@ -183,16 +389,19 @@ _WHISPER_METHODOLOGY = (
 
 # ── Optional secondary signal: Allosaurus (phoneme-level, no reference) ───────
 #
-# Allosaurus is NOT a project dependency (not in requirements.txt, not
-# installed by default) and must never become one for pronunciation to
-# work — see module/task requirements. If it happens to be installed in a
-# given environment, WhisperConfidenceProvider.assess() below will use it
-# to add one extra, honest sentence of acoustic evidence to `methodology`.
-# It never touches `score` or `issues` — see requirement to keep existing
-# scoring behavior unchanged. It never requires or invents a reference
-# phoneme sequence: it only reports how confidently Allosaurus's own CTC
-# decoder recognized *some* phones somewhere in the recording, using only
-# the raw AM logits Allosaurus actually returns (see
+# NOTE: Allosaurus (+ panphon, eng-to-ipa) IS now a real project dependency
+# (see requirements.txt) — but only because it backs the new default
+# pronunciation provider, AllosaurusG2PPronunciationProvider, above. This
+# section is unrelated legacy code specific to WhisperConfidenceProvider
+# (kept byte-for-byte, since that provider itself is kept only as a
+# non-default, explicit-selection legacy option — see this file's module
+# docstring): it best-effort-imports Allosaurus independently and, if
+# available, uses it to add one extra, honest sentence of acoustic evidence
+# to `methodology`. It never touches `score` or `issues` — see requirement
+# to keep existing scoring behavior unchanged. It never requires or invents
+# a reference phoneme sequence: it only reports how confidently Allosaurus's
+# own CTC decoder recognized *some* phones somewhere in the recording, using
+# only the raw AM logits Allosaurus actually returns (see
 # pronunciation/allosaurus_provider.py, which verified that shape).
 
 _ALLOSAURUS_MODEL_NAME = "uni2005"
@@ -497,6 +706,7 @@ class PronunciationProviderRegistry:
 
     def __init__(self, providers: dict | None = None):
         self._providers = providers if providers is not None else {
+            "allosaurus_g2p": AllosaurusG2PPronunciationProvider(),
             "whisper_confidence": WhisperConfidenceProvider(),
             "saaras": SaarasPronunciationProvider(),
             "local_llm": LocalLLMPronunciationProvider(),

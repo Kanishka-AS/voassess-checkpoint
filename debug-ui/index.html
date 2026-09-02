@@ -95,7 +95,7 @@
     grid-template-columns: 380px 1fr;
     gap: 20px;
     padding: 20px 24px 40px;
-    max-width: 1300px;
+    max-width: 1400px;
     margin: 0 auto;
     align-items: start;
   }
@@ -403,65 +403,6 @@
   .score-hero--poor .value { color: var(--bad); }
   .score-hero--na .value { color: var(--text-faint); }
 
-  /* ─── Metadata / Detail ──────────────────────────────────────────────── */
-  .meta {
-    font-size: 12px;
-    color: var(--text-dim);
-    line-height: 1.8;
-  }
-  .meta .k {
-    display: inline-block;
-    min-width: 80px;
-    color: var(--text-faint);
-    text-transform: uppercase;
-    font-size: 10.5px;
-    letter-spacing: 0.04em;
-  }
-  .meta code {
-    font-family: var(--mono);
-    background: var(--bg-input);
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 12px;
-  }
-  .meta .mismatch { color: var(--warn); }
-
-  .word-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 6px;
-  }
-  .word-chip {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 2px 12px;
-    font-size: 12px;
-    font-family: var(--mono);
-    color: var(--text-dim);
-  }
-
-  .issue-card {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--warn);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
-    margin-bottom: 8px;
-    font-size: 13px;
-  }
-  .issue-card:last-child { margin-bottom: 0; }
-  .issue-row { display: flex; gap: 8px; margin-bottom: 2px; }
-  .issue-row .k {
-    color: var(--text-faint);
-    min-width: 68px;
-    flex-shrink: 0;
-    font-size: 12px;
-  }
-  .issue-row .v-wrong { color: var(--bad); font-family: var(--mono); }
-  .issue-row .v-correct { color: var(--good); font-family: var(--mono); }
-
   /* ─── Tables ──────────────────────────────────────────────────────────── */
   .table-wrap {
     overflow-x: auto;
@@ -512,61 +453,6 @@
   .notice.warn strong { color: var(--warn); }
   .notice.good { border-color: var(--good); border-style: solid; background: var(--good-soft); }
 
-  /* ─── Raw JSON ───────────────────────────────────────────────────────── */
-  .raw-json summary {
-    cursor: pointer;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--text-dim);
-    padding: 4px 0;
-    list-style: none;
-  }
-  .raw-json summary::-webkit-details-marker { display: none; }
-  .raw-json summary::before { content: "▸ "; color: var(--text-faint); }
-  .raw-json[open] summary::before { content: "▾ "; }
-  .raw-json pre {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 12px;
-    font-family: var(--mono);
-    font-size: 12px;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-    margin-top: 8px;
-    max-height: 400px;
-    overflow-y: auto;
-  }
-  .copy-btn {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    padding: 3px 12px;
-    border-radius: var(--radius-sm);
-    font-size: 11.5px;
-    cursor: pointer;
-    margin-left: 10px;
-    transition: border-color 0.15s;
-  }
-  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-  .error-box {
-    border: 1px solid var(--bad);
-    background: var(--bad-soft);
-    border-radius: var(--radius);
-    padding: 14px 18px;
-  }
-  .error-box h3 { color: var(--bad); font-size: 13px; margin: 0 0 6px 0; }
-  .error-box pre {
-    font-family: var(--mono);
-    font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    margin: 6px 0 0 0;
-    color: var(--text-dim);
-  }
-
   /* ─── Tabs ───────────────────────────────────────────────────────────── */
   .tabs {
     display: flex;
@@ -610,12 +496,12 @@
     overflow-y: auto;
     overflow-x: auto;
   }
-  .saved-table {
+  .saved-results-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 11px;
   }
-  .saved-table th {
+  .saved-results-table th {
     position: sticky;
     top: 0;
     background: var(--bg-card);
@@ -630,29 +516,29 @@
     z-index: 10;
     white-space: nowrap;
   }
-  .saved-table td {
+  .saved-results-table td {
     padding: 5px 8px;
     border-bottom: 1px solid var(--border);
     color: var(--text-dim);
     font-size: 11px;
   }
-  .saved-table tr:hover td { background: var(--bg-input); }
-  .saved-table .score-cell { font-weight: 600; white-space: nowrap; }
-  .saved-table .score-cell.good { color: var(--good); }
-  .saved-table .score-cell.ok { color: var(--warn); }
-  .saved-table .score-cell.poor { color: var(--bad); }
-  .saved-table .transcript-cell {
+  .saved-results-table tr:hover td { background: var(--bg-input); }
+  .saved-results-table .score-cell { font-weight: 600; white-space: nowrap; }
+  .saved-results-table .score-cell.good { color: var(--good); }
+  .saved-results-table .score-cell.ok { color: var(--warn); }
+  .saved-results-table .score-cell.poor { color: var(--bad); }
+  .saved-results-table .transcript-cell {
     max-width: 150px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     cursor: help;
   }
-  .saved-table .transcript-cell:hover {
+  .saved-results-table .transcript-cell:hover {
     white-space: normal;
     overflow: visible;
   }
-  .saved-table .archetype-badge {
+  .saved-results-table .archetype-badge {
     display: inline-block;
     padding: 1px 8px;
     border-radius: 10px;
@@ -661,7 +547,7 @@
     background: var(--bg-input);
     color: var(--text-dim);
   }
-  .saved-table .view-btn {
+  .saved-results-table .view-btn {
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-dim);
@@ -671,7 +557,18 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  .saved-table .view-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .saved-results-table .view-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .saved-results-table .report-btn {
+    background: transparent;
+    border: 1px solid var(--good);
+    color: var(--good);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 9px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .saved-results-table .report-btn:hover { background: var(--good-soft); }
 
   .saved-stats {
     display: grid;
@@ -737,7 +634,7 @@
     margin-bottom: 8px;
   }
 
-  .saved-header {
+  .saved-header-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -745,8 +642,8 @@
     flex-wrap: wrap;
     gap: 8px;
   }
-  .saved-header .title { font-size: 13px; font-weight: 600; color: var(--text); }
-  .saved-header .actions { display: flex; gap: 6px; align-items: center; }
+  .saved-header-row .title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .saved-header-row .actions { display: flex; gap: 6px; align-items: center; }
   .saved-count { font-size: 11px; color: var(--text-faint); }
   .saved-loading {
     color: var(--text-faint);
@@ -793,7 +690,7 @@
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    max-width: 700px;
+    max-width: 800px;
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
@@ -824,7 +721,7 @@
   }
   .modal-body .detail-row .label {
     color: var(--text-faint);
-    width: 120px;
+    width: 140px;
     flex-shrink: 0;
   }
   .modal-body .detail-row .value { color: var(--text); word-break: break-word; }
@@ -838,6 +735,31 @@
     overflow-y: auto;
     margin: 4px 0;
     font-family: var(--mono);
+  }
+
+  /* ─── Teacher Report ────────────────────────────────────────────────── */
+  .teacher-report h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 12px 0 8px 0;
+  }
+  .teacher-report ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .teacher-report ul li {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .teacher-report .report-summary {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 12px;
   }
 
   .hint {
@@ -874,6 +796,8 @@
     .post-record-row { flex-direction: column; align-items: stretch; }
     .analyze-btn { width: 100%; justify-content: center; }
     .modal { padding: 16px; margin: 10px; }
+    .modal-body .detail-row { flex-direction: column; }
+    .modal-body .detail-row .label { width: 100%; }
   }
 </style>
 </head>
@@ -974,7 +898,10 @@
           🔬 Analysis
         </button>
         <button class="tab" data-tab="saved" onclick="switchTab('saved')">
-          📊 Saved <span class="badge" id="savedBadge">0</span>
+          📊 Quick <span class="badge" id="savedBadge">0</span>
+        </button>
+        <button class="tab" data-tab="guided" onclick="switchTab('guided')">
+          📝 Guided <span class="badge" id="guidedBadge">0</span>
         </button>
       </div>
 
@@ -986,7 +913,7 @@
         <div id="analysisResults"></div>
       </div>
 
-      <!-- Saved Results Tab -->
+      <!-- Saved Quick Assessments Tab -->
       <div class="tab-content" id="tab-saved">
         <div id="savedContent">
           <div class="password-row">
@@ -996,6 +923,20 @@
           <div id="passwordError" class="password-error">Incorrect password. Please try again.</div>
           <div id="savedResultsContainer">
             <div class="saved-loading">Enter password and click View to load saved results.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Guided Assessments Tab -->
+      <div class="tab-content" id="tab-guided">
+        <div id="guidedContent">
+          <div class="password-row">
+            <input type="password" id="guidedPassword" placeholder="Password (default: tutor123)" value="tutor123" />
+            <button class="login-btn" onclick="loadGuidedAssessments()">View</button>
+          </div>
+          <div id="guidedPasswordError" class="password-error">Incorrect password. Please try again.</div>
+          <div id="guidedResultsContainer">
+            <div class="saved-loading">Enter password and click View to load guided assessments.</div>
           </div>
         </div>
       </div>
