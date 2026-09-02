@@ -19,16 +19,7 @@ const els = {
   recorderError: document.getElementById("recorderError"),
   analyzeBtn: document.getElementById("analyzeBtn"),
   statusLine: document.getElementById("statusLine"),
-  // NOTE: this must be the inner container that lives inside the Analysis
-  // tab (#analysisResults), NOT the outer <section id="results"> — that
-  // outer section also wraps the tab bar, #tab-saved, and #emptyState.
-  // Pointing this at the outer section meant clearResults() (called at the
-  // top of every runAnalysis()) wiped out the tab bar and both tab panels
-  // on the very first analysis, and every rendered card (including
-  // Pronunciation) got appended as a flat sibling outside the tab
-  // structure instead of inside the Analysis tab. Fixed as part of the
-  // debug-audio wiring audit.
-  results: document.getElementById("analysisResults"),
+  results: document.getElementById("results"),
   emptyState: document.getElementById("emptyState"),
   waveform: document.getElementById("waveform"),
   pronProviderBox: document.getElementById("pronProviderBox"),
@@ -656,22 +647,13 @@ function renderResults(data, elapsedMs) {
   renderTranscript(data.transcript);
   if (data.stt) renderStt(data.stt);
   if (data.vocabulary) renderVocabulary(data.vocabulary);
-  if (data.grammar) {
-    renderGrammar(data.grammar, data.grammar_tool_available, {
-      grammarSource: data.grammar_source,
-      heuristicAdded: data.grammar_heuristic_issues_added,
-      ltErrors: data.languagetool_errors,
-    });
-  }
-  // Kept directly under Grammar (rather than after Overall) — both panels
-  // come from the same LanguageTool call, so grouping them reads as one
-  // "grammar & linguistics" section instead of two unrelated ones.
-  renderTokenAnalysis(data.linguistic_analysis, data.languagetool_errors);
+  if (data.grammar) renderGrammar(data.grammar, data.grammar_tool_available);
   renderFillers(data.filler, data.filler_occurrences);
   renderPronunciation(data.pronunciation);
   renderPacing(data.pace);
   renderAcoustic(data.clarity);
   renderOverall(data);
+  renderTokenAnalysis(data.linguistic_analysis, data.languagetool_errors);
   renderWordTimings(data.word_timings);
   if (data.note) renderNote(data.note);
   renderRawJson(data);
@@ -733,47 +715,17 @@ function renderVocabulary(v) {
   );
 }
 
-// Human-readable label for where the base grammar signal (before the
-// learner-heuristic layer) came from — mirrors resolve_grammar()'s three
-// possible values in app.py.
-const GRAMMAR_SOURCE_LABELS = {
-  languagetool_http: "LanguageTool (HTTP /v2/check)",
-  language_tool_python_local: "language_tool_python (local fallback)",
-  regex_fallback: "Regex fallback (no grammar tool available)",
-};
-
-// Per-issue source: LanguageTool's own matches carry no "source" key;
-// grammar_heuristics.py/grammar_pos_rules.py tag their additions with
-// source: "learner_heuristic" (see _make_issue()) so the two are
-// distinguishable here instead of appearing as one undifferentiated list.
-function issueSourceBadge(iss) {
-  if (iss.source === "learner_heuristic") {
-    const conf = iss.confidence ? ` (${esc(iss.confidence)} confidence)` : "";
-    return `<span class="word-chip" style="border-color:var(--warn);color:var(--warn);">Learner heuristic${conf}</span>`;
-  }
-  if (iss.rule_id || iss.category) {
-    return `<span class="word-chip" style="border-color:var(--accent);color:var(--accent);">LanguageTool</span>`;
-  }
-  return "";
-}
-
-function renderGrammar(g, toolAvailable, meta) {
-  meta = meta || {};
+function renderGrammar(g, toolAvailable) {
   let issuesHtml = "";
   if (Array.isArray(g.issues) && g.issues.length) {
     issuesHtml = g.issues
       .map(
         (iss) => `
       <div class="issue-card">
-        <div class="issue-row" style="margin-bottom:6px;justify-content:space-between;">
-          <span class="k" style="min-width:0;">Issue</span>${issueSourceBadge(iss)}
-        </div>
         ${iss.wrong !== undefined ? `<div class="issue-row"><span class="k">Wrong:</span><span class="v-wrong">${esc(iss.wrong)}</span></div>` : ""}
         ${iss.correct !== undefined ? `<div class="issue-row"><span class="k">Correct:</span><span class="v-correct">${esc(iss.correct)}</span></div>` : ""}
         ${iss.message !== undefined ? `<div class="issue-row"><span class="k">Message:</span><span>${esc(iss.message)}</span></div>` : ""}
         ${iss.context !== undefined ? `<div class="issue-row"><span class="k">Context:</span><span>${esc(iss.context)}</span></div>` : ""}
-        ${iss.rule_id ? `<div class="issue-row"><span class="k">Rule:</span><span style="font-family:var(--mono);">${esc(iss.rule_id)}</span></div>` : ""}
-        ${iss.category ? `<div class="issue-row"><span class="k">Category:</span><span>${esc(iss.category)}</span></div>` : ""}
       </div>`
       )
       .join("");
@@ -786,33 +738,12 @@ function renderGrammar(g, toolAvailable, meta) {
       ? `<div class="notice not-impl" style="margin-top:8px;"><strong>Note:</strong> the grammar tool (language_tool_python / Java) is unavailable on this backend instance — error count is a crude fallback, not real LanguageTool checking.</div>`
       : "";
 
-  // Which path actually produced the base `errors`/`issues` above (see
-  // resolve_grammar() in app.py) plus how many of those issues (and how
-  // much of `errors`) came from the additive learner-heuristic layer on
-  // top of it — 0 whenever LanguageTool's own findings already covered
-  // everything.
-  const sourceLine = meta.grammarSource
-    ? `<div class="notice" style="margin-top:8px;">
-        <strong>Grammar source:</strong> ${esc(GRAMMAR_SOURCE_LABELS[meta.grammarSource] || meta.grammarSource)}
-        ${meta.heuristicAdded ? ` &middot; +${meta.heuristicAdded} issue${meta.heuristicAdded === 1 ? "" : "s"} added by the learner-heuristic layer` : ""}
-      </div>`
-    : "";
-
-  // If the HTTP LanguageTool /v2/check call itself failed, that's *why*
-  // grammar fell back to a lower-fidelity path above — surface the real
-  // reason instead of leaving it implicit in grammar_source alone.
-  const checkErrorLine = meta.ltErrors && meta.ltErrors.check
-    ? `<div class="notice not-impl" style="margin-top:8px;"><strong>LanguageTool /v2/check unavailable:</strong> ${esc(meta.ltErrors.check)}</div>`
-    : "";
-
   els.results.appendChild(
     card(`<h3>Grammar</h3><div class="metric-grid">
         ${g.score !== undefined ? metric("Score", g.score) : ""}
         ${g.errors !== undefined ? metric("Errors", g.errors) : ""}
       </div>
       ${issuesHtml}
-      ${sourceLine}
-      ${checkErrorLine}
       ${toolLine}`)
   );
 }
@@ -889,63 +820,37 @@ function renderFillers(filler, legacyOccurrences) {
 
 function renderPronunciation(p) {
   if (!p) return;
-
-  // Score is visually prominent (large, color-banded) — but only when the
-  // backend actually returned a usable number. available === false or a
-  // null/undefined score both render as an explicit "N/A" band, never a
-  // fabricated 0.
-  const hasScore = p.available !== false && typeof p.score === "number";
-  const band = !hasScore ? "na" : p.score >= 80 ? "good" : p.score >= 60 ? "ok" : "poor";
-  const scoreHero = `
-    <div class="score-hero score-hero--${band}">
-      <div class="score-hero-value">${hasScore ? esc(p.score) : "—"}</div>
-      <div class="score-hero-label">Pronunciation Score</div>
-    </div>`;
-
-  // available: false gets its own unmistakable banner — distinct from the
-  // requested-vs-actual-provider note below, since a provider can differ
-  // from what was requested (honest fallback) while still being available.
-  let unavailableHtml = "";
-  if (p.available === false) {
-    unavailableHtml = `
-      <div class="notice not-impl" style="margin-bottom:12px;">
-        <strong>Pronunciation assessment unavailable</strong>
-        ${p.detail ? `<div style="margin-top:6px;">${esc(p.detail)}</div>` : ""}
-      </div>`;
-  }
+  const rows = [p.score !== undefined ? metric("Score", p.score) : ""].join("");
 
   let issuesHtml = "";
   if (Array.isArray(p.issues) && p.issues.length) {
     issuesHtml = `<table class="tokens">
       <thead><tr><th>Word</th><th>Confidence</th></tr></thead>
-      <tbody>${p.issues.map((i) => `<tr><td>${esc(i.word)}</td><td>${i.confidence !== undefined && i.confidence !== null ? esc(i.confidence) + "%" : "—"}</td></tr>`).join("")}</tbody>
+      <tbody>${p.issues.map((i) => `<tr><td>${esc(i.word)}</td><td>${i.confidence}%</td></tr>`).join("")}</tbody>
     </table>`;
   } else {
-    issuesHtml = `<div class="notice">No pronunciation issues detected.</div>`;
+    issuesHtml = `<div class="notice">No low-confidence words flagged.</div>`;
   }
 
-  // Provider/methodology are secondary metadata — smaller, muted, below the
-  // score/issues rather than competing with them. Both come straight from
-  // the response; never hardcoded or assumed (e.g. never assume Whisper).
-  const mismatch = p.requested_provider && p.provider && p.requested_provider !== p.provider;
-  let metaHtml = "";
-  if (p.provider || p.methodology) {
-    metaHtml = `
-      <div class="pronun-meta">
-        ${p.provider ? `<div><span class="k">Provider</span> ${esc(p.provider)}${
-          mismatch ? ` <span class="mismatch-note">(requested <code>${esc(p.requested_provider)}</code>, which was unavailable)</span>` : ""
-        }</div>` : ""}
-        ${p.methodology ? `<div><span class="k">Methodology</span> ${esc(p.methodology)}</div>` : ""}
-        ${p.detail && p.available !== false ? `<div><span class="k">Detail</span> ${esc(p.detail)}</div>` : ""}
+  // Provider transparency: always show what actually ran vs what was
+  // requested, and never let "requested == provider" go unstated when
+  // they differ (backend never silently swaps providers).
+  let providerHtml = "";
+  if (p.provider) {
+    const mismatch = p.requested_provider && p.requested_provider !== p.provider;
+    providerHtml = `
+      <div class="notice ${mismatch ? "not-impl" : ""}" style="margin-top:10px;">
+        <strong>Provider used: ${esc(p.provider)}</strong>${
+          mismatch ? ` (requested <code>${esc(p.requested_provider)}</code>, which was unavailable)` : ""
+        }
+        ${p.detail ? `<div style="margin-top:6px;">${esc(p.detail)}</div>` : ""}
       </div>`;
   }
 
   els.results.appendChild(
-    card(`<h3>Pronunciation</h3>
-      ${scoreHero}
-      ${unavailableHtml}
-      ${metaHtml}
-      <div class="label" style="font-size:11px;color:var(--text-dim);text-transform:uppercase;margin:12px 0 6px;">Flagged Words (capped at 8, from scoring path)</div>
+    card(`<h3>Pronunciation</h3><div class="metric-grid">${rows}</div>
+      ${providerHtml}
+      <div class="label" style="font-size:11px;color:var(--text-dim);text-transform:uppercase;margin:8px 0 4px;">Flagged Words (capped at 8, from scoring path)</div>
       ${issuesHtml}`)
   );
 }
@@ -1085,12 +990,10 @@ function renderWordTimings(wordTimings) {
   els.results.appendChild(
     card(`<h3>Word Timings</h3>
       <div class="notice" style="margin-bottom:10px;"><strong>Source: ${esc(sourceLabel)}</strong> — every word from this provider's word-level timing output. For Whisper this is the full <code>word_timestamps=True</code> set the pronunciation scorer draws its capped 8-item "issues" list from.</div>
-      <div class="table-scroll">
-        <table class="tokens">
-          <thead><tr><th>Word</th><th>Start</th><th>End</th><th>Duration</th><th>Probability</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`)
+      <table class="tokens">
+        <thead><tr><th>Word</th><th>Start</th><th>End</th><th>Duration</th><th>Probability</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`)
   );
 }
 

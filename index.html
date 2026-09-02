@@ -183,7 +183,27 @@
         <p id="clarity-detail" class="metric-detail">—</p>
       </div>
 
+      <!-- Fluency: informational, like Vocabulary/CEFR — not part of the
+           five-metric Overall score. Built from real pause-timing evidence
+           (see DESIGN.md / audio_utils.analyze_pauses) rather than being a
+           re-blend of the other metrics, so it's shown here as its own
+           card rather than folded into the fixed 5-axis radar chart. -->
+      <div class="metric-card" data-metric="fluency">
+        <div class="metric-header">
+          <span class="metric-icon">🌬️</span>
+          <span class="metric-name">Fluency</span>
+          <span id="fluency-score" class="metric-score">—</span>
+        </div>
+        <div class="progress-track"><div id="fluency-bar" class="progress-fill" style="width:0%"></div></div>
+        <p id="fluency-detail" class="metric-detail">—</p>
+      </div>
+
     </div><!-- /metrics-grid -->
+
+    <!-- Low-evidence caveat — shown only when the response was too short
+         (few words / short duration) for the scores above to be reliable.
+         See app.py score_free_speech()'s `evidence` field. -->
+    <p id="evidence-notice" class="evidence-notice hidden"></p>
 
     <!-- Pronunciation issues detail panel -->
     <div id="pronun-panel" class="issues-panel hidden">

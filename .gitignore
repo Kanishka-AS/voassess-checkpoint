@@ -9,4 +9,6 @@ __pycache__/
 *.wav
 *.json
 *.Zone.Identifier
+moonshine/
 speechocean_data/
+*:Zone.Identifier

@@ -537,3 +537,55 @@ def resolve_pronunciation(provider_name: str, transcript: str, segments: list,
     this function never does it silently."""
     provider = pronunciation_registry.get(provider_name)
     return provider.assess(transcript, segments, wav_path)
+
+# ── Whisper reliability check ─────────────────────────────────────────────
+def is_whisper_reliable(segments: list, threshold: float = 0.5) -> dict:
+    """
+    Check if Whisper was confident enough to trust the transcript.
+    
+    Args:
+        segments: Whisper segments with word-level probabilities
+        threshold: Minimum average word probability to consider reliable (default 0.5)
+    
+    Returns:
+        {
+            "reliable": bool,
+            "avg_word_prob": float,
+            "word_count": int,
+            "reason": str
+        }
+    """
+    probs = []
+    word_count = 0
+    
+    for seg in segments or []:
+        for w in seg.get("words", []) or []:
+            prob = w.get("probability")
+            if prob is not None:
+                probs.append(prob)
+                word_count += 1
+    
+    if not probs or word_count < 2:
+        return {
+            "reliable": False,
+            "avg_word_prob": 0.0,
+            "word_count": word_count,
+            "reason": "No word-level confidence data available"
+        }
+    
+    avg_prob = sum(probs) / len(probs)
+    
+    if avg_prob < threshold:
+        return {
+            "reliable": False,
+            "avg_word_prob": round(avg_prob, 3),
+            "word_count": word_count,
+            "reason": f"Average word confidence ({avg_prob:.2f}) below threshold ({threshold})"
+        }
+    
+    return {
+        "reliable": True,
+        "avg_word_prob": round(avg_prob, 3),
+        "word_count": word_count,
+        "reason": None
+    }

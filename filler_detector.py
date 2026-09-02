@@ -60,6 +60,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Optional
 
 # ── Token model ────────────────────────────────────────────────────────────
@@ -383,7 +384,8 @@ def _punct_context(tok: _Tok, transcript: str) -> str:
 
 
 def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
-                    duration_seconds: Optional[float] = None, debug: bool = False) -> dict:
+                    duration_seconds: Optional[float] = None, debug: bool = False,
+                    audio_path: Optional[Path] = None) -> dict:
     """
     Context-aware filler detection.
 
@@ -408,6 +410,9 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
             and includes the same records under the returned "debug" key.
             False by default — no behavior/shape change for existing
             callers (app.py does not pass this).
+        audio_path: Optional path to audio file for audio-based filler detection.
+            When provided, the function will also detect fillers directly
+            from audio (catching "um", "uh", "er" even if Whisper drops them).
 
     Returns:
         {
@@ -415,6 +420,7 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
           "rate_per_min": float | None,
           "occurrences": [ {word, start, end, type, confidence, reason}, ... ],
           "hesitations": [ {phrase, start, end, type, confidence, reason}, ... ],
+          "audio_fillers": [ {start, end, duration, type, confidence}, ... ],  # NEW
           "debug": [ {...} , ... ],   # only present when debug=True
         }
     """
@@ -446,7 +452,7 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
 
     if not transcript or not transcript.strip():
         result = {"count": 0, "rate_per_min": 0.0 if duration_seconds else None,
-                   "occurrences": [], "hesitations": []}
+                   "occurrences": [], "hesitations": [], "audio_fillers": []}
         if debug:
             result["debug"] = []
         return result
@@ -491,6 +497,44 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
     occurrences.sort(key=lambda o: o["start"])
     count = len(occurrences)
 
+    # ── NEW: Audio-based filler detection ──────────────────────────────────
+    audio_fillers = []
+    if audio_path and Path(audio_path).exists():
+        try:
+            from audio_utils import detect_fillers_from_audio
+            audio_fillers = detect_fillers_from_audio(audio_path)
+            
+            # Add audio fillers to occurrences (avoid duplicates by time)
+            for af in audio_fillers:
+                # Check if this filler is already in occurrences (by time overlap)
+                is_duplicate = False
+                for occ in occurrences:
+                    if abs(occ.get('start', 0) - af['start']) < 0.1:
+                        is_duplicate = True
+                        break
+                
+                if not is_duplicate:
+                    occurrences.append({
+                        'word': '[filler]',
+                        'start': af['start'],
+                        'end': af['end'],
+                        'type': 'filled_pause',
+                        'confidence': af['confidence'],
+                        'reason': f"Audio-based detection: {af['duration']:.3f}s low-energy segment"
+                    })
+            
+            # Re-sort by start time
+            occurrences.sort(key=lambda o: o.get('start', 0))
+            count = len(occurrences)
+            
+            if debug and audio_fillers:
+                print(f"Audio fillers detected: {len(audio_fillers)}")
+                for af in audio_fillers:
+                    print(f"  {af['start']:.2f}s - {af['end']:.2f}s (duration: {af['duration']:.3f}s)")
+        except Exception as e:
+            if debug:
+                print(f"Audio filler detection failed: {e}")
+
     rate_per_min = None
     if duration_seconds and duration_seconds > 0:
         rate_per_min = round(count / (duration_seconds / 60), 1)
@@ -500,6 +544,7 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
         "rate_per_min": rate_per_min,
         "occurrences": occurrences,
         "hesitations": _detect_hesitations(transcript),
+        "audio_fillers": audio_fillers,  # NEW
     }
     if debug:
         result["debug"] = debug_log

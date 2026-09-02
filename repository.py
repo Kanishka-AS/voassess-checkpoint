@@ -426,10 +426,12 @@ def get_assessment_parameters(assessment_id: int, user_id: str) -> Optional[Dict
         'clarity': full.get('clarity'),
         'vocabulary': full.get('vocabulary'),
         'cefr': full.get('cefr'),
+        'fluency': full.get('fluency'),
         'archetype': full.get('archetype'),
         'hesitations': full.get('hesitations', []),
         'linguistic_analysis': full.get('linguistic_analysis'),
         'languagetool_errors': full.get('languagetool_errors'),
+        'evidence': full.get('evidence'),
     }
 
 
@@ -551,27 +553,52 @@ def get_english_assessment(assessment_id: int, user_id: str) -> Optional[Dict[st
 
 
 def get_english_assessment_parameters(assessment_id: int, user_id: str) -> Optional[Dict[str, Any]]:
-    """Get just the parameters for a guided assessment."""
+    """Get just the parameters for a guided assessment.
+
+    The per-metric detail (pace/filler/pronunciation/grammar/clarity/
+    fluency/archetype/hesitations/etc.) lives under the stored `final`
+    stage object, not at the top level of the saved result — `final` IS
+    the Full Assessment stage's complete score_free_speech() output (see
+    save_english_assessment() / assessment_finalize()). Reading
+    `full.get('pace')` etc. directly (the pre-existing code here) always
+    returned None: those keys were never present at that level, only
+    nested one level deeper under 'final'. This was a real end-to-end gap
+    — the guided-assessment detail endpoint silently served nulls for
+    every core metric even though the underlying data existed and was
+    already correctly stored.
+    """
     full = get_english_assessment(assessment_id, user_id)
     if not full:
         return None
-    
+
+    # Prefer the nested `final` stage object (present whenever full_result
+    # was saved — i.e. every row going forward). Fall back to the flat
+    # row-based shape only for legacy rows saved before full_result existed
+    # (see get_english_assessment()'s own fallback branch above).
+    final = full.get('final') or full
+
     return {
         'id': full['id'],
         'timestamp': full.get('timestamp'),
         'name': full.get('name'),
-        'picture_talk_score': full.get('picture_talk_score'),
-        'media_repeat_score': full.get('media_repeat_score'),
-        'picture_describe_score': full.get('picture_describe_score'),
+        'picture_talk_score': (full.get('sections', {}) or {}).get('picture_talk', {}).get('score')
+                               if full.get('sections') else full.get('picture_talk_score'),
+        'media_repeat_score': (full.get('sections', {}) or {}).get('media_repeat', {}).get('score')
+                               if full.get('sections') else full.get('media_repeat_score'),
+        'picture_describe_score': (full.get('sections', {}) or {}).get('picture_describe', {}).get('score')
+                               if full.get('sections') else full.get('picture_describe_score'),
         'overall_score': full.get('overall_score'),
-        'pace': full.get('pace'),
-        'filler': full.get('filler'),
-        'pronunciation': full.get('pronunciation'),
-        'grammar': full.get('grammar'),
-        'clarity': full.get('clarity'),
+        'pace': final.get('pace'),
+        'filler': final.get('filler'),
+        'pronunciation': final.get('pronunciation'),
+        'grammar': final.get('grammar'),
+        'clarity': final.get('clarity'),
+        'fluency': final.get('fluency'),
         'vocabulary': full.get('vocabulary'),
         'cefr': full.get('cefr'),
-        'archetype': full.get('archetype'),
+        'archetype': final.get('archetype'),
+        'hesitations': final.get('hesitations', []),
+        'evidence': final.get('evidence'),
     }
 
 

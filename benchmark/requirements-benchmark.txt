@@ -1,0 +1,11 @@
+# Extra deps beyond ../requirements.txt, needed just to run the benchmark
+# harness (not production). openai-whisper and httpx are already in
+# ../requirements.txt — only needed if you also want to test Whisper.
+
+python-dotenv>=1.0.0
+
+# Parakeet — NVIDIA's free hosted API (no GPU, no local model)
+nvidia-riva-client
+
+# Moonshine — local, CPU, offline
+# (installed separately below, not a plain pip name — see README)

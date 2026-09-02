@@ -362,6 +362,17 @@ main { max-width: 960px; margin: 0 auto; padding: 28px 20px 60px; }
 
 .metric-detail { font-size: .8rem; color: var(--muted); }
 
+.evidence-notice {
+  margin: 4px 0 18px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: rgba(245, 158, 11, .12);
+  border: 1px solid rgba(245, 158, 11, .35);
+  color: var(--ok, #f59e0b);
+  font-size: .85rem;
+}
+.evidence-notice.hidden { display: none; }
+
 /* Text cards */
 .text-card {
   background: var(--card);

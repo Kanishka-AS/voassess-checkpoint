@@ -216,6 +216,27 @@ function displayResults(d) {
     `${d.grammar.errors} issue${d.grammar.errors !== 1 ? 's' : ''}`);
   setMetric('clarity',       d.clarity.score,       scoreLabel(d.clarity.score));
 
+  // Fluency — informational metric built from real pause-timing evidence;
+  // not part of Overall (see DESIGN.md). May be absent on very old cached
+  // responses, so guard rather than assume.
+  if (d.fluency) {
+    const pauseDetail = d.fluency.pause_data_available
+      ? `${d.fluency.long_pause_count} long pause${d.fluency.long_pause_count !== 1 ? 's' : ''}`
+      : 'No pause timing available';
+    setMetric('fluency', d.fluency.score, pauseDetail);
+  }
+
+  // Low-evidence caveat (short recordings) — see app.py's `evidence` field.
+  const evidenceEl = document.getElementById('evidence-notice');
+  if (evidenceEl) {
+    if (d.evidence && d.evidence.low_evidence) {
+      evidenceEl.textContent = '⚠️ ' + d.evidence.reason;
+      evidenceEl.classList.remove('hidden');
+    } else {
+      evidenceEl.classList.add('hidden');
+    }
+  }
+
   // Voice Archetype
   document.getElementById('archetype-emoji').textContent = d.archetype.emoji;
   document.getElementById('archetype-name').textContent  = d.archetype.archetype;

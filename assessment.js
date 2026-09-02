@@ -392,6 +392,7 @@
               English Assessment report, covering all five stages. The overall score reflects your final
               free-speaking assessment (Step 5); Vocabulary Coverage and CEFR Level draw on your Describe &amp;
               Compare and Full Assessment recordings together, plus your repeat-task accuracy.</p>
+            ${f.evidence && f.evidence.low_evidence ? `<p class="evidence-notice">⚠️ ${escHtml(f.evidence.reason)}</p>` : ''}
           </div>
         </div>
 
@@ -411,6 +412,7 @@
           <div class="metric-card"><div class="metric-header"><span class="metric-icon">🗣</span><span class="metric-name">Pronunciation</span><span class="metric-score ${cls(f.pronunciation.score)}">${Math.round(f.pronunciation.score)}</span></div></div>
           <div class="metric-card"><div class="metric-header"><span class="metric-icon">✏️</span><span class="metric-name">Grammar</span><span class="metric-score ${cls(f.grammar.score)}">${Math.round(f.grammar.score)}</span></div><p class="metric-detail">${f.grammar.errors} issues</p></div>
           <div class="metric-card"><div class="metric-header"><span class="metric-icon">💎</span><span class="metric-name">Clarity</span><span class="metric-score ${cls(f.clarity.score)}">${Math.round(f.clarity.score)}</span></div></div>
+          ${f.fluency ? `<div class="metric-card"><div class="metric-header"><span class="metric-icon">🌬️</span><span class="metric-name">Fluency</span><span class="metric-score ${cls(f.fluency.score)}">${Math.round(f.fluency.score)}</span></div><p class="metric-detail">${f.fluency.pause_data_available ? `${f.fluency.long_pause_count} long pause${f.fluency.long_pause_count !== 1 ? 's' : ''}` : 'No pause timing available'}</p></div>` : ''}
           <div class="metric-card"><div class="metric-header"><span class="metric-icon">📚</span><span class="metric-name">Vocabulary Coverage</span><span class="metric-score ${cls(report.vocabulary.score)}">${Math.round(report.vocabulary.score)}</span></div><p class="metric-detail">${report.vocabulary.unique_words} unique words · ${report.vocabulary.advanced_ratio.toFixed(0)}% advanced</p></div>
           <div class="metric-card"><div class="metric-header"><span class="metric-icon">🏅</span><span class="metric-name">CEFR Level</span><span class="metric-score ${cls(report.cefr.score)}">${escHtml(report.cefr.level)}</span></div><p class="metric-detail">${report.cefr.score.toFixed(0)}% composite</p></div>
         </div>
@@ -529,6 +531,7 @@
     field('Pronunciation:', `${Math.round(f.pronunciation.score)} / 100`);
     field('Grammar:', `${Math.round(f.grammar.score)} / 100  (${f.grammar.errors} issues)`);
     field('Clarity:', `${Math.round(f.clarity.score)} / 100`);
+    if (f.fluency) field('Fluency:', `${Math.round(f.fluency.score)} / 100  (${f.fluency.pause_data_available ? f.fluency.long_pause_count + ' long pauses' : 'no pause timing'})`);
     divider();
 
     // Vocabulary / CEFR (assessment-wide)

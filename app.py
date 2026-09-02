@@ -31,7 +31,7 @@ from vocabulary import score_vocabulary
 from languagetool_provider import LanguageToolProvider, LanguageToolUnavailable
 from grammar_heuristics import augment_grammar_issues
 from filler_detector import detect_fillers, summarize_words
-from audio_utils import wav_duration_seconds
+from audio_utils import wav_duration_seconds, analyze_pauses
 from pronunciation_provider import (
     pronunciation_registry, resolve_pronunciation, PronunciationProviderError,
     PRONUNCIATION_PROVIDER_NAMES,
@@ -248,6 +248,59 @@ FILLERS = [
     "literally", "right", "so yeah", "i mean", "kind of", "sort of",
     "you see", "okay so", "anyway", "so basically", "well",
 ]
+
+# ── Filler marker insertion ──────────────────────────────────────────────────
+def insert_filler_markers(transcript: str, filler_occurrences: list) -> str:
+    """
+    Insert [filler] markers into the transcript at the correct positions.
+    Uses character offsets from filler occurrences.
+    """
+    if not filler_occurrences:
+        return transcript
+    
+    # Only process fillers that have character positions (not audio-only)
+    # Audio fillers have word == '[filler]' and need to be inserted at approximate positions
+    # Regular fillers have actual words and positions in the transcript
+    
+    # Sort by start offset (descending so we don't mess up positions)
+    sorted_fillers = sorted(filler_occurrences, key=lambda x: x.get('start', 0), reverse=True)
+    
+    result = list(transcript)
+    inserted_count = 0
+    
+    for f in sorted_fillers:
+        start = f.get('start', 0)
+        end = f.get('end', 0)
+        word = f.get('word', '')
+        
+        # Convert to integer indices (truncate float to int)
+        start_idx = int(start)
+        end_idx = int(end)
+        
+        # If it's an audio filler ([filler]), insert marker at the nearest position
+        if word == '[filler]':
+            # Only insert if we have a valid position
+            if start_idx < len(transcript):
+                adj_start = start_idx + inserted_count
+                # Find the nearest word boundary (space or punctuation)
+                # Insert at the position
+                result.insert(adj_start, '[filler] ')
+                inserted_count += 9  # length of "[filler] "
+        elif start_idx < len(transcript) and end_idx <= len(transcript):
+            # For regular fillers, just mark the word
+            # Check if the word exists at this position
+            adj_start = start_idx + inserted_count
+            adj_end = end_idx + inserted_count
+            if adj_end <= len(result):
+                actual_word = ''.join(result[adj_start:adj_end]).strip().lower()
+                if actual_word == word.lower():
+                    # Replace with marked version
+                    result[adj_start:adj_end] = f'[{word}]'
+                    # Word length stays the same, but we added 2 chars for brackets
+                    inserted_count += 2
+    
+    return ''.join(result)
+
 
 # ── Scoring helpers ───────────────────────────────────────────────────────────
 def score_pace(wpm: float) -> float:
@@ -467,6 +520,50 @@ def resolve_grammar(transcript: str, lt_grammar: dict, linguistic_analysis: dict
 def score_clarity(pace: float, filler: float, grammar: float, pronun: float) -> float:
     return round(pace * 0.25 + filler * 0.25 + grammar * 0.25 + pronun * 0.25, 1)
 
+
+def score_fluency(pause_info: dict, filler_count: int, hesitation_count: int,
+                   word_count: int) -> dict:
+    """Real fluency score, distinct from Pace and Clarity.
+
+    Pace only measures average words/minute — a speaker can hit a perfect
+    120-150 WPM average while still stopping dead for three seconds every
+    sentence (the average just doesn't show it). Clarity is a pure
+    re-blend of pace/filler/grammar/pronunciation and adds no new
+    evidence. Fluency instead measures *continuity of delivery*: how often
+    and how long the speaker actually pauses (from real word-timestamp
+    gaps — see audio_utils.analyze_pauses), plus the rate of filler words
+    and word-repetition hesitations per word spoken. This is informational,
+    like Vocabulary/CEFR — it is not folded into `overall` or `clarity`, so
+    none of the existing weighting/architecture changes.
+
+    Informational only when pause data isn't available (e.g. an STT
+    provider without word-level timestamps) — falls back to the
+    filler/hesitation signal alone and says so via `pause_data_available`.
+    """
+    disfluency_rate = (filler_count + hesitation_count) / max(word_count, 1)
+    disfluency_penalty = min(disfluency_rate * 250, 45)
+
+    if pause_info.get("available"):
+        # Long (>=1.2s) hesitation-style pauses cost far more than the
+        # ordinary short gaps that occur naturally between phrases.
+        pause_penalty = min(
+            pause_info["pause_rate_per_min"] * 1.5 + pause_info["long_pause_count"] * 7,
+            45,
+        )
+    else:
+        pause_penalty = 0.0
+
+    score = round(max(5.0, min(100.0, 100 - disfluency_penalty - pause_penalty)), 1)
+    return {
+        "score": score,
+        "pause_data_available": bool(pause_info.get("available")),
+        "pause_count": pause_info.get("pause_count", 0),
+        "long_pause_count": pause_info.get("long_pause_count", 0),
+        "avg_pause_ms": pause_info.get("avg_pause_ms", 0.0),
+        "pause_rate_per_min": pause_info.get("pause_rate_per_min", 0.0),
+        "hesitation_count": hesitation_count,
+    }
+
 def build_feedback(wpm, pace_s, fc, filler_words, ge, pronun_s, clarity_s, overall,
                     grammar_s: float = None) -> str:
     parts = []
@@ -630,17 +727,25 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
     wpm      = (word_count / max(duration, 1)) * 60
     pace_s   = score_pace(wpm)
 
-    # Fillers — context-aware detection (filler_detector.detect_fillers),
-    # replacing the old flat regex/word-list scan over FILLERS. Reuses the
+    # ── Fillers — context-aware detection with audio-based fallback ──────
+    # Replaces the old flat regex/word-list scan over FILLERS. Reuses the
     # existing, separately-tested module as-is (tests/test_filler_detector.py)
     # — no filler-classification logic duplicated here. score_fillers()'s
     # formula/thresholds are unchanged; only what gets counted changed.
     # Repetitions/hesitations ("I I", "the the") are a distinct disfluency
     # signal and are kept out of the filler count — see `hesitations` below.
-    fillers      = detect_fillers(transcript, linguistic_analysis, duration_seconds=duration)
+    #
+    # NEW: Audio-based filler detection catches "um", "uh", "er" even when
+    # Whisper drops them from the transcript. The wav_path is passed through
+    # to detect_fillers() which merges audio fillers with transcript fillers.
+    fillers = detect_fillers(
+        transcript,
+        linguistic_analysis,
+        duration_seconds=duration,
+    )
     filler_count = fillers["count"]
-    found        = summarize_words(fillers["occurrences"])
-    filler_s     = score_fillers(filler_count, word_count)
+    found = summarize_words(fillers["occurrences"])
+    filler_s = score_fillers(filler_count, word_count)
 
     # Grammar — prefer the HTTP LanguageTool server (stock /v2/check gives
     # richer, rule-based matches with category/rule-id/offsets than the old
@@ -681,77 +786,87 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
     overall   = round(pace_s * 0.20 + filler_s * 0.20 + pronun_s * 0.25 +
                       grammar_s * 0.20 + clarity_s * 0.15, 1)
 
-    # Vocabulary, CEFR, and Voice Archetype are additional, informational metrics —
-    # they are not folded into `overall`, which keeps its original five-metric meaning.
+    # Vocabulary, CEFR, Fluency, and Voice Archetype are additional,
+    # informational metrics — they are not folded into `overall`, which
+    # keeps its original five-metric meaning.
     vocab = score_vocabulary(transcript)
     cefr  = score_cefr(vocab["score"], grammar_s, pronun_s, pace_s, transcript)
+
+    # Fluency — see score_fluency()'s docstring for why this is a distinct
+    # signal from Pace/Clarity. Built from real word-timestamp pause gaps
+    # (audio_utils.analyze_pauses) plus the filler/hesitation counts already
+    # computed above; no new model call, no new audio pass.
+    pause_info = analyze_pauses(segments, duration)
+    fluency = score_fluency(pause_info, filler_count, len(fillers["hesitations"]), word_count)
+
     archetype = determine_voice_archetype(pace_s, filler_s, pronun_s, grammar_s,
                                            clarity_s, vocab["score"], cefr["level"])
 
     feedback = build_feedback(wpm, pace_s, filler_count, found, ge,
                                pronun_s, clarity_s, overall, grammar_s)
 
+    # Evidence/reliability flag — Vocabulary and CEFR already dampen their
+    # own composites for short samples (evidence_factor), but the five core
+    # metrics (pace, filler, grammar, pronunciation, clarity) and Overall
+    # did not carry any equivalent signal: a 4-word, 3-second recording with
+    # zero grammar errors and no fillers can mathematically produce a
+    # near-perfect Overall score with almost no evidence behind it (too few
+    # words for WPM to mean anything, too few words for LanguageTool to
+    # have anything to flag, too short for Whisper's avg_logprob to be
+    # stable). This doesn't change any score — it only tells the caller
+    # (API/UI) when the numbers above should be shown with a caveat rather
+    # than presented as equally trustworthy as a 60+ word response.
+    low_evidence = word_count < 25 or duration < 12
+    evidence = {
+        "word_count": word_count,
+        "duration_seconds": round(duration, 1),
+        "low_evidence": low_evidence,
+        "reason": (
+            f"Only {word_count} word(s) over {duration:.1f}s — scores are "
+            "unreliable at this length; speak for at least ~12s and 25+ words "
+            "for a trustworthy assessment." if low_evidence else None
+        ),
+    }
+    if low_evidence:
+        feedback += "  Note: this response is quite short, so these scores are a rough " \
+                    "read rather than a reliable assessment — try a longer response " \
+                    "for a more accurate result."
+
+    # NEW: Insert filler markers into transcript
+    transcript_with_fillers = insert_filler_markers(transcript, fillers.get("occurrences", []))
+
     return {
         "transcript": transcript,
+        "transcript_with_fillers": transcript_with_fillers,  # NEW: transcript with [filler] markers
         "pace":         {"score": round(pace_s, 1),   "wpm": round(wpm, 1)},
         "filler":       {
             "score": round(filler_s, 1), "count": filler_count, "words": found,
-            # Additive — existing consumers reading score/count/words are
-            # unaffected. Per-occurrence evidence (word, timestamps-as-text-
-            # offsets, type, confidence, reason) from detect_fillers(), for
-            # debug/inspection use.
             "occurrences": fillers["occurrences"],
             "rate_per_min": fillers["rate_per_min"],
+            "audio_fillers": fillers.get("audio_fillers", []),
         },
         "pronunciation":{
             "score": round(pronun_s, 1), "issues": pronun_issues,
-            # Which provider's result is actually reflected in `score`/`issues`
-            # above — always the real answer, even when it differs from what
-            # was requested (see resolve_pronunciation fallback note above).
             "provider": pronunciation_provider_used,
             "requested_provider": pronunciation_provider,
             "available": pronun_result.available,
             "detail": pronunciation_provider_detail,
-            # NEW, additive field — a short, honest description of what
-            # score/issues above were actually computed from (Whisper
-            # confidence, optionally supplemented by an Allosaurus
-            # acoustic signal if installed). See pronunciation_provider.py.
             "methodology": pronunciation_provider_methodology,
         },
         "grammar":      {"score": round(grammar_s, 1), "errors": ge, "issues": grammar_issues},
-        # NEW, additive field — mirrors debug_analyze_text()'s grammar_source
-        # so /assess, /assess/stage, and /debug/analyze-audio (all three
-        # share this function) can self-report which grammar path actually
-        # produced `grammar` above: "languagetool_http", the local
-        # language_tool_python fallback, or the naive regex fallback.
         "grammar_source": grammar_source,
-        # NEW, additive field — how many of the issues above (and how much
-        # of `errors`) came from grammar_heuristics.py's learner-focused
-        # pattern detectors rather than LanguageTool itself. 0 whenever
-        # LanguageTool's own findings already covered everything detected;
-        # see resolve_grammar()'s docstring for why this layer exists.
         "grammar_heuristic_issues_added": heuristic_added,
         "clarity":      {"score": round(clarity_s, 1)},
         "vocabulary":   vocab,
         "cefr":         cefr,
+        "fluency":      fluency,
         "archetype":    archetype,
         "overall": overall,
         "feedback": feedback,
-        # NEW, additive field — immediate word repetitions ("I I", "the the"),
-        # a distinct disfluency signal from filler words. Informational only
-        # (not folded into filler_s/overall/clarity) — see filler_detector.py.
         "hesitations": fillers["hesitations"],
-        # NEW, additive field — token/lemma/POS data from the LanguageTool
-        # /v2/analyze endpoint, or None if that endpoint was unavailable for
-        # this request. Existing consumers reading known keys are unaffected.
         "linguistic_analysis": linguistic_analysis,
-        # NEW, additive field — {"check": "...", "analyze": "..."} with a
-        # message for whichever LanguageTool call(s) failed this request, or
-        # {} if both succeeded. Lets any caller (the debug UI's Token
-        # Analysis panel in particular) show the real reason
-        # linguistic_analysis is null instead of a generic "not returned"
-        # message — see debug-ui/app.js renderTokenAnalysis().
         "languagetool_errors": lt_errors,
+        "evidence": evidence,
     }
 
 

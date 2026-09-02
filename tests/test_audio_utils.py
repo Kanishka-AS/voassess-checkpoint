@@ -11,7 +11,7 @@ import wave
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from audio_utils import wav_duration_seconds
+from audio_utils import wav_duration_seconds, analyze_pauses
 
 
 def _write_wav(path, seconds: float, rate: int = 16000, channels: int = 1, sampwidth: int = 2):
@@ -67,3 +67,55 @@ def test_matches_the_actual_debug_recording_case():
         return  # sample recording not present in this checkout — skip silently
     d = wav_duration_seconds(path_str)
     assert 2.9 <= d <= 3.0
+
+
+# ── analyze_pauses() ────────────────────────────────────────────────────────
+
+def _seg(words):
+    """Build a single Whisper-style segment dict from (word, start, end) tuples."""
+    return {"words": [{"word": w, "start": s, "end": e} for (w, s, e) in words]}
+
+
+def test_no_pauses_below_short_threshold():
+    """Natural word-to-word gaps under SHORT_PAUSE_SECONDS must not be
+    counted as pauses at all — otherwise every recording would register
+    dozens of 'pauses' that are just normal articulation gaps."""
+    segs = [_seg([("hi", 0.0, 0.2), ("there", 0.25, 0.5), ("friend", 0.55, 0.9)])]
+    r = analyze_pauses(segs, duration=1.0)
+    assert r["available"] is True
+    assert r["pause_count"] == 0
+    assert r["long_pause_count"] == 0
+
+
+def test_counts_pause_between_short_and_long_threshold():
+    segs = [_seg([("one", 0.0, 0.2), ("two", 0.7, 0.9)])]  # 0.5s gap: pause, not "long"
+    r = analyze_pauses(segs, duration=1.0)
+    assert r["pause_count"] == 1
+    assert r["long_pause_count"] == 0
+
+
+def test_counts_long_hesitation_pause():
+    segs = [_seg([("one", 0.0, 0.2), ("two", 2.0, 2.2)])]  # 1.8s gap: long pause
+    r = analyze_pauses(segs, duration=3.0)
+    assert r["pause_count"] == 1
+    assert r["long_pause_count"] == 1
+    assert r["avg_pause_ms"] == 1800.0
+
+
+def test_unavailable_when_no_timestamped_words():
+    """Fewer than two timestamped words (e.g. an STT provider with no
+    word-level timing, or empty segments) must report available=False
+    rather than fabricating zeros that look like 'measured, zero pauses'."""
+    assert analyze_pauses([], duration=5.0)["available"] is False
+    assert analyze_pauses([{"words": []}], duration=5.0)["available"] is False
+    assert analyze_pauses([_seg([("only", 0.0, 0.2)])], duration=5.0)["available"] is False
+
+
+def test_words_out_of_order_are_sorted_before_gap_calculation():
+    """Segments/words aren't guaranteed to already be in time order in every
+    caller's data — analyze_pauses must sort by start time itself rather
+    than trusting input order, or gaps could come out negative/nonsensical."""
+    segs = [_seg([("second", 2.0, 2.2), ("first", 0.0, 0.2)])]
+    r = analyze_pauses(segs, duration=3.0)
+    assert r["pause_count"] == 1
+    assert r["avg_pause_ms"] > 0

@@ -3,152 +3,132 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>VoiceCoach — Backend Debug UI</title>
+<title>VoiceCoach — Debug</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
   :root {
     --bg: #0b0d12;
-    --panel: #12151c;
-    --panel-alt: #191d26;
-    --panel-raised: #1f2430;
-    --border: #242935;
-    --border-strong: #333a48;
-    --text: #e7e9ee;
-    --text-dim: #8891a0;
-    --text-faint: #5b6270;
+    --bg-card: #12151e;
+    --bg-input: #1a1d26;
+    --border: #252a35;
+    --border-light: #2f3542;
+    --text: #eaeef2;
+    --text-dim: #8b93a0;
+    --text-faint: #585f6d;
     --accent: #5b8def;
-    --accent-soft: rgba(91, 141, 239, 0.14);
+    --accent-hover: #7aa1f2;
+    --accent-soft: rgba(91, 141, 239, 0.12);
     --good: #3ecf8e;
-    --good-soft: rgba(62, 207, 142, 0.12);
+    --good-soft: rgba(62, 207, 142, 0.1);
     --bad: #ef5b5b;
-    --bad-soft: rgba(239, 91, 91, 0.1);
+    --bad-soft: rgba(239, 91, 91, 0.08);
     --warn: #e8b339;
-    --warn-soft: rgba(232, 179, 57, 0.1);
-    --mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    --warn-soft: rgba(232, 179, 57, 0.08);
+    --radius: 10px;
     --radius-sm: 6px;
-    --radius-md: 10px;
+    --mono: "JetBrains Mono", monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    --shadow: 0 2px 12px rgba(0,0,0,0.4);
   }
 
-  * { box-sizing: border-box; }
-
-  html { -webkit-font-smoothing: antialiased; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    margin: 0;
     background: var(--bg);
-    background-image:
-      radial-gradient(circle at 12% 0%, rgba(91,141,239,0.05), transparent 45%);
     color: var(--text);
     font-family: var(--sans);
     line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
   }
 
-  :focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
-  /* ---------- Topbar ---------- */
-
+  /* ─── Top Bar ─────────────────────────────────────────────────────────── */
   .topbar {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 16px 24px;
+    padding: 14px 24px;
     border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--panel), var(--bg));
+    background: var(--bg-card);
     flex-wrap: wrap;
   }
   .topbar h1 {
-    font-size: 16px;
-    font-weight: 600;
-    margin: 0;
-    letter-spacing: -0.01em;
-  }
-  .topbar h1::before {
-    content: "";
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--good);
-    margin-right: 9px;
-    box-shadow: 0 0 0 3px var(--good-soft);
-  }
-
-  .pipeline-strip {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-family: var(--mono);
-    font-size: 11.5px;
-    color: var(--text-dim);
-    flex-wrap: wrap;
+    gap: 10px;
   }
-  .pipeline-strip .step {
-    background: var(--panel-alt);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 3px 8px;
-    color: var(--text-dim);
+  .topbar h1 .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 0 3px var(--good-soft);
   }
-  .pipeline-strip .arrow { color: var(--text-faint); }
-  .pipeline-strip .route {
-    color: var(--accent);
-    margin-right: 4px;
-  }
-  .pipeline-strip .tag-nonprod {
-    margin-left: 8px;
+  .topbar .tag {
+    font-size: 11px;
+    font-weight: 500;
     color: var(--warn);
     background: var(--warn-soft);
-    border: 1px solid rgba(232,179,57,0.3);
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(232,179,57,0.2);
+    margin-left: 4px;
+  }
+  .topbar .route {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    background: var(--bg-input);
+    padding: 4px 12px;
     border-radius: var(--radius-sm);
-    padding: 3px 8px;
+    border: 1px solid var(--border);
   }
 
-  /* ---------- Layout ---------- */
-
+  /* ─── Layout ──────────────────────────────────────────────────────────── */
   .layout {
     display: grid;
-    grid-template-columns: 360px 1fr;
-    gap: 18px;
+    grid-template-columns: 380px 1fr;
+    gap: 20px;
     padding: 20px 24px 40px;
-    align-items: start;
-    max-width: 1400px;
+    max-width: 1300px;
     margin: 0 auto;
+    align-items: start;
   }
-  @media (max-width: 880px) {
+  @media (max-width: 860px) {
     .layout { grid-template-columns: 1fr; padding: 16px; }
   }
 
+  /* ─── Panel ───────────────────────────────────────────────────────────── */
   .panel {
-    background: var(--panel);
+    background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 18px;
-    position: sticky;
-    top: 20px;
+    border-radius: var(--radius);
+    padding: 20px;
   }
-  @media (max-width: 880px) {
-    .panel { position: static; }
-  }
-
   .panel h2 {
-    margin: 0 0 14px 0;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    margin: 0 0 16px 0;
   }
 
-  /* ---------- Recorder ---------- */
-
+  /* ─── Recorder ────────────────────────────────────────────────────────── */
   .recorder-box {
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 18px;
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: border-color 0.3s;
+  }
+  .recorder-box.has-recording {
+    border-color: var(--good);
   }
 
   .waveform {
@@ -156,15 +136,17 @@
     align-items: center;
     justify-content: center;
     gap: 3px;
-    height: 36px;
-    margin-bottom: 14px;
+    height: 40px;
+    margin-bottom: 16px;
+    background: rgba(0,0,0,0.3);
+    border-radius: var(--radius-sm);
   }
   .waveform .bar {
     width: 3px;
     border-radius: 2px;
-    background: var(--border-strong);
+    background: var(--border-light);
     height: 6px;
-    transition: height 0.12s ease, background 0.2s ease;
+    transition: height 0.1s ease, background 0.2s ease;
   }
   .waveform.live .bar { background: var(--bad); }
 
@@ -173,24 +155,25 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 10px;
     background: var(--accent);
     color: #0b0d12;
     border: none;
-    padding: 13px 18px;
+    padding: 14px 20px;
     border-radius: var(--radius-sm);
     font-family: var(--sans);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     cursor: pointer;
-    transition: filter 0.15s ease, transform 0.05s ease;
+    transition: background 0.15s, transform 0.1s;
   }
-  .record-btn:hover:not(:disabled) { filter: brightness(1.1); }
-  .record-btn:active:not(:disabled) { transform: scale(0.99); }
-  .record-btn:disabled { opacity: 0.5; cursor: default; }
+  .record-btn:hover:not(:disabled) { background: var(--accent-hover); }
+  .record-btn:active:not(:disabled) { transform: scale(0.98); }
+  .record-btn:disabled { opacity: 0.4; cursor: default; }
   .record-btn .dot {
-    width: 8px; height: 8px; border-radius: 50%;
+    width: 10px; height: 10px; border-radius: 50%;
     background: currentColor;
+    flex-shrink: 0;
   }
   .record-btn.recording {
     background: var(--bad);
@@ -201,49 +184,53 @@
   }
   @keyframes blink {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .record-btn.recording .dot { animation: none; }
+    50% { opacity: 0.3; }
   }
 
-  .recorder-status-row {
+  .recorder-status {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-top: 14px;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--text-dim);
   }
-  .rec-status { display: flex; align-items: center; gap: 6px; }
+  .rec-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .rec-status::before {
     content: "";
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--text-faint);
   }
-  .rec-status.live { color: var(--bad); font-weight: 600; }
+  .rec-status.live { color: var(--bad); font-weight: 500; }
   .rec-status.live::before { background: var(--bad); }
   .rec-status.done { color: var(--good); }
   .rec-status.done::before { background: var(--good); }
-  .rec-timer { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .rec-timer {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--text);
+  }
 
   audio#audioPreview {
     width: 100%;
     margin-top: 14px;
-    height: 34px;
+    height: 36px;
     display: none;
   }
+  audio#audioPreview[style*="block"] + .post-record-row { display: flex; }
 
   .post-record-row {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 12px;
     margin-top: 14px;
     flex-wrap: wrap;
   }
-  .post-record-row { display: none; }
-
   .file-info {
     font-size: 12px;
     color: var(--text-dim);
@@ -251,142 +238,134 @@
   }
 
   .analyze-btn {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    padding: 9px 18px;
+    background: var(--good);
+    color: #0b0d12;
+    border: none;
+    padding: 9px 22px;
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: opacity 0.15s, transform 0.1s;
   }
-  .analyze-btn:hover:not(:disabled) { background: var(--accent-soft); }
-  .analyze-btn:disabled { opacity: 0.4; cursor: default; }
+  .analyze-btn:hover:not(:disabled) { opacity: 0.85; transform: scale(0.98); }
+  .analyze-btn:disabled { opacity: 0.35; cursor: default; transform: none; }
 
   .error-inline {
-    margin-top: 14px;
+    margin-top: 12px;
     border: 1px solid var(--bad);
     background: var(--bad-soft);
-    color: var(--bad) !important;
+    color: var(--bad);
     border-radius: var(--radius-sm);
-    padding: 10px 12px;
-    font-size: 12.5px;
+    padding: 10px 14px;
+    font-size: 13px;
     display: none;
   }
   .error-inline::before { content: "⚠ "; }
 
-  .status-line-row { margin-top: 12px; min-height: 18px; }
-  .status-line { font-size: 12.5px; color: var(--text-dim); }
+  .status-line {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--text-dim);
+    min-height: 20px;
+  }
   .status-line.error { color: var(--bad); }
   .status-line.ok { color: var(--good); }
 
-  .hint {
-    font-size: 12px;
-    color: var(--text-faint);
+  /* ─── Provider Controls ──────────────────────────────────────────────── */
+  .provider-section {
     margin-top: 16px;
-    line-height: 1.6;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
   }
-  .hint code {
-    font-family: var(--mono);
-    color: var(--text-dim);
-    background: var(--panel-alt);
-    padding: 1px 5px;
-    border-radius: 4px;
-  }
-
-  /* ---------- Pronunciation provider selector ---------- */
-
-  .pron-provider-box {
-    background: var(--panel-alt);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 14px 16px;
-    margin-top: 14px;
-  }
-  .pron-provider-label {
+  .provider-section .label {
     font-size: 10.5px;
     font-weight: 600;
-    color: var(--text-faint);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: 10px;
+    color: var(--text-faint);
+    margin-bottom: 8px;
   }
-  .pron-provider-option {
+  .provider-option {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 4px;
+    gap: 10px;
+    padding: 6px 4px;
     cursor: pointer;
     border-radius: var(--radius-sm);
+    transition: background 0.15s;
   }
-  .pron-provider-option:hover:not(.is-disabled) { background: var(--panel-raised); }
-  .pron-provider-option input[type="radio"] { accent-color: var(--accent); flex-shrink: 0; }
-  .pron-provider-name { font-size: 13px; color: var(--text); flex: 1; }
-  .pron-provider-option.is-disabled { cursor: default; opacity: 0.5; }
-  .pron-provider-option.is-disabled .pron-provider-name { color: var(--text-faint); }
-  .pron-provider-badge {
+  .provider-option:hover:not(.is-disabled) { background: var(--bg-input); }
+  .provider-option input[type="radio"] {
+    accent-color: var(--accent);
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+  .provider-option .name { font-size: 13px; color: var(--text); flex: 1; }
+  .provider-option .badge {
     font-size: 10px;
     font-family: var(--mono);
-    padding: 2px 7px;
+    padding: 2px 8px;
     border-radius: 999px;
     display: none;
   }
-  .pron-provider-badge.show-unavailable {
+  .provider-option .badge.unavailable {
     display: inline-block;
     color: var(--warn);
     background: var(--warn-soft);
-    border: 1px solid rgba(232,179,57,0.3);
+    border: 1px solid rgba(232,179,57,0.2);
   }
-  .pron-provider-badge.show-comingsoon {
+  .provider-option .badge.coming {
     display: inline-block;
     color: var(--text-faint);
-    background: var(--panel-raised);
+    background: var(--bg-input);
     border: 1px solid var(--border);
   }
+  .provider-option.is-disabled { opacity: 0.5; cursor: default; }
+  .provider-option.is-disabled .name { color: var(--text-faint); }
 
-  /* ---------- Results ---------- */
-
-  .results { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  /* ─── Results ─────────────────────────────────────────────────────────── */
+  .results { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
   .empty-state {
     color: var(--text-faint);
     border: 1px dashed var(--border);
-    border-radius: var(--radius-md);
-    padding: 56px 24px;
+    border-radius: var(--radius);
+    padding: 60px 24px;
     text-align: center;
-    font-size: 13.5px;
+    font-size: 14px;
   }
 
   .card {
-    background: var(--panel);
+    background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 18px;
+    border-radius: var(--radius);
+    padding: 18px 20px;
   }
   .card h3 {
-    margin: 0 0 12px 0;
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 600;
-    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+    margin: 0 0 12px 0;
   }
 
+  /* ─── Metrics ─────────────────────────────────────────────────────────── */
   .metric-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .metric {
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 11px 13px;
+    padding: 10px 14px;
   }
   .metric .label {
-    font-size: 10.5px;
+    font-size: 10px;
     color: var(--text-faint);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -394,104 +373,112 @@
   .metric .value {
     font-size: 20px;
     font-weight: 600;
-    margin-top: 3px;
     font-family: var(--mono);
+    margin-top: 2px;
   }
 
-  /* ---------- Score hero (prominent primary score, e.g. Pronunciation) ---------- */
+  /* ─── Score Hero ──────────────────────────────────────────────────────── */
   .score-hero {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 16px 18px;
+    border-radius: var(--radius);
+    padding: 16px 20px;
     margin-bottom: 12px;
   }
-  .score-hero-value {
+  .score-hero .value {
     font-family: var(--mono);
     font-size: 38px;
     font-weight: 700;
     line-height: 1;
   }
-  .score-hero-label {
+  .score-hero .label {
     font-size: 10.5px;
-    color: var(--text-faint);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-top: 8px;
+    color: var(--text-faint);
+    margin-top: 6px;
   }
-  .score-hero--good .score-hero-value { color: var(--good); }
-  .score-hero--ok .score-hero-value { color: var(--warn); }
-  .score-hero--poor .score-hero-value { color: var(--bad); }
-  .score-hero--na .score-hero-value { color: var(--text-faint); }
+  .score-hero--good .value { color: var(--good); }
+  .score-hero--ok .value { color: var(--warn); }
+  .score-hero--poor .value { color: var(--bad); }
+  .score-hero--na .value { color: var(--text-faint); }
 
-  /* ---------- Secondary metadata (provider/methodology/detail) ---------- */
-  .pronun-meta {
+  /* ─── Metadata / Detail ──────────────────────────────────────────────── */
+  .meta {
     font-size: 12px;
     color: var(--text-dim);
-    line-height: 1.7;
+    line-height: 1.8;
   }
-  .pronun-meta .k {
+  .meta .k {
     display: inline-block;
-    min-width: 82px;
+    min-width: 80px;
     color: var(--text-faint);
     text-transform: uppercase;
     font-size: 10.5px;
     letter-spacing: 0.04em;
   }
-  .pronun-meta code {
+  .meta code {
     font-family: var(--mono);
-    background: var(--panel-raised);
-    padding: 1px 5px;
+    background: var(--bg-input);
+    padding: 1px 6px;
     border-radius: 4px;
+    font-size: 12px;
   }
-  .pronun-meta .mismatch-note { color: var(--warn); }
+  .meta .mismatch { color: var(--warn); }
 
-  .word-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .word-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
   .word-chip {
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: 999px;
-    padding: 3px 11px;
+    padding: 2px 12px;
     font-size: 12px;
     font-family: var(--mono);
     color: var(--text-dim);
   }
 
   .issue-card {
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border: 1px solid var(--border);
     border-left: 3px solid var(--warn);
     border-radius: var(--radius-sm);
-    padding: 11px 13px;
+    padding: 10px 14px;
     margin-bottom: 8px;
     font-size: 13px;
   }
   .issue-card:last-child { margin-bottom: 0; }
-  .issue-row { display: flex; gap: 8px; margin-bottom: 3px; }
-  .issue-row:last-child { margin-bottom: 0; }
-  .issue-row .k { color: var(--text-faint); min-width: 68px; flex-shrink: 0; font-size: 12px; }
+  .issue-row { display: flex; gap: 8px; margin-bottom: 2px; }
+  .issue-row .k {
+    color: var(--text-faint);
+    min-width: 68px;
+    flex-shrink: 0;
+    font-size: 12px;
+  }
   .issue-row .v-wrong { color: var(--bad); font-family: var(--mono); }
   .issue-row .v-correct { color: var(--good); font-family: var(--mono); }
 
-  .table-scroll {
+  /* ─── Tables ──────────────────────────────────────────────────────────── */
+  .table-wrap {
     overflow-x: auto;
-    max-height: 420px;
+    max-height: 400px;
     overflow-y: auto;
     border-radius: var(--radius-sm);
   }
   table.tokens { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .table-scroll table.tokens thead th {
+  .table-wrap table.tokens thead th {
     position: sticky;
     top: 0;
-    background: var(--panel);
+    background: var(--bg-card);
     z-index: 1;
   }
   table.tokens th, table.tokens td {
     text-align: left;
-    padding: 8px 10px;
+    padding: 6px 10px;
     border-bottom: 1px solid var(--border);
   }
   table.tokens th {
@@ -503,20 +490,29 @@
   }
   table.tokens td { font-family: var(--mono); font-size: 12.5px; }
   table.tokens tr:last-child td { border-bottom: none; }
-  .alt-list { font-size: 12px; color: var(--text-faint); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .alt-list {
+    font-size: 12px;
+    color: var(--text-faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
 
   .notice {
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border: 1px dashed var(--border);
     border-radius: var(--radius-sm);
-    padding: 11px 13px;
+    padding: 10px 14px;
     font-size: 12.5px;
     color: var(--text-dim);
-    line-height: 1.5;
+    line-height: 1.6;
   }
-  .notice.not-impl { border-color: var(--warn); border-style: solid; background: var(--warn-soft); }
-  .notice strong { color: var(--warn); }
+  .notice.warn { border-color: var(--warn); border-style: solid; background: var(--warn-soft); }
+  .notice.warn strong { color: var(--warn); }
+  .notice.good { border-color: var(--good); border-style: solid; background: var(--good-soft); }
 
+  /* ─── Raw JSON ───────────────────────────────────────────────────────── */
   .raw-json summary {
     cursor: pointer;
     font-size: 12.5px;
@@ -526,13 +522,10 @@
     list-style: none;
   }
   .raw-json summary::-webkit-details-marker { display: none; }
-  .raw-json summary::before {
-    content: "▸ ";
-    color: var(--text-faint);
-  }
+  .raw-json summary::before { content: "▸ "; color: var(--text-faint); }
   .raw-json[open] summary::before { content: "▾ "; }
   .raw-json pre {
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 12px;
@@ -542,51 +535,48 @@
     white-space: pre-wrap;
     word-break: break-word;
     margin-top: 8px;
+    max-height: 400px;
+    overflow-y: auto;
   }
   .copy-btn {
-    background: var(--panel-raised);
+    background: var(--bg-input);
     border: 1px solid var(--border);
     color: var(--text-dim);
-    padding: 4px 10px;
+    padding: 3px 12px;
     border-radius: var(--radius-sm);
     font-size: 11.5px;
     cursor: pointer;
-    margin-left: 8px;
+    margin-left: 10px;
+    transition: border-color 0.15s;
   }
   .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-  .perf-line {
-    font-size: 11.5px;
-    color: var(--text-faint);
-    font-family: var(--mono);
-  }
 
   .error-box {
     border: 1px solid var(--bad);
     background: var(--bad-soft);
-    border-radius: var(--radius-md);
-    padding: 16px 18px;
+    border-radius: var(--radius);
+    padding: 14px 18px;
   }
-  .error-box h3 { color: var(--bad); margin: 0 0 8px 0; font-size: 13px; }
+  .error-box h3 { color: var(--bad); font-size: 13px; margin: 0 0 6px 0; }
   .error-box pre {
     font-family: var(--mono);
     font-size: 12px;
     white-space: pre-wrap;
     word-break: break-word;
-    margin: 8px 0 0 0;
+    margin: 6px 0 0 0;
     color: var(--text-dim);
   }
 
-  /* ---------- Tabs for Debug UI ---------- */
-  .debug-tabs {
+  /* ─── Tabs ───────────────────────────────────────────────────────────── */
+  .tabs {
     display: flex;
     gap: 4px;
     margin-bottom: 16px;
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border-radius: var(--radius-sm);
     padding: 4px;
   }
-  .debug-tab {
+  .tab {
     flex: 1;
     padding: 8px 12px;
     border: none;
@@ -596,16 +586,14 @@
     cursor: pointer;
     font-size: 12px;
     font-weight: 600;
-    transition: all 0.2s;
+    transition: background 0.2s, color 0.2s;
   }
-  .debug-tab:hover {
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    background: var(--bg-card);
     color: var(--text);
   }
-  .debug-tab.active {
-    background: var(--panel-raised);
-    color: var(--text);
-  }
-  .debug-tab .badge {
+  .tab .badge {
     background: var(--accent-soft);
     color: var(--accent);
     padding: 1px 8px;
@@ -613,28 +601,24 @@
     font-size: 10px;
     margin-left: 4px;
   }
-  .tab-content {
-    display: none;
-  }
-  .tab-content.active {
-    display: block;
-  }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
 
-  /* ---------- Saved Results Table ---------- */
-  .saved-results-wrap {
+  /* ─── Saved Results ──────────────────────────────────────────────────── */
+  .saved-wrap {
     max-height: 600px;
     overflow-y: auto;
     overflow-x: auto;
   }
-  .saved-results-table {
+  .saved-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 11px;
   }
-  .saved-results-table th {
+  .saved-table th {
     position: sticky;
     top: 0;
-    background: var(--panel);
+    background: var(--bg-card);
     color: var(--text-faint);
     font-weight: 600;
     font-size: 9px;
@@ -646,43 +630,38 @@
     z-index: 10;
     white-space: nowrap;
   }
-  .saved-results-table td {
+  .saved-table td {
     padding: 5px 8px;
     border-bottom: 1px solid var(--border);
     color: var(--text-dim);
     font-size: 11px;
   }
-  .saved-results-table tr:hover td {
-    background: var(--panel-raised);
-  }
-  .saved-results-table .score-cell {
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .saved-results-table .score-cell.good { color: var(--good); }
-  .saved-results-table .score-cell.ok { color: var(--warn); }
-  .saved-results-table .score-cell.poor { color: var(--bad); }
-  .saved-results-table .transcript-cell {
+  .saved-table tr:hover td { background: var(--bg-input); }
+  .saved-table .score-cell { font-weight: 600; white-space: nowrap; }
+  .saved-table .score-cell.good { color: var(--good); }
+  .saved-table .score-cell.ok { color: var(--warn); }
+  .saved-table .score-cell.poor { color: var(--bad); }
+  .saved-table .transcript-cell {
     max-width: 150px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     cursor: help;
   }
-  .saved-results-table .transcript-cell:hover {
+  .saved-table .transcript-cell:hover {
     white-space: normal;
     overflow: visible;
   }
-  .saved-results-table .archetype-badge {
+  .saved-table .archetype-badge {
     display: inline-block;
     padding: 1px 8px;
     border-radius: 10px;
     font-size: 9px;
     font-weight: 600;
-    background: var(--panel-raised);
+    background: var(--bg-input);
     color: var(--text-dim);
   }
-  .saved-results-table .view-btn {
+  .saved-table .view-btn {
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-dim);
@@ -692,20 +671,8 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  .saved-results-table .view-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-  .saved-count {
-    font-size: 11px;
-    color: var(--text-faint);
-  }
-  .saved-loading {
-    color: var(--text-faint);
-    font-size: 13px;
-    padding: 20px;
-    text-align: center;
-  }
+  .saved-table .view-btn:hover { border-color: var(--accent); color: var(--accent); }
+
   .saved-stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
@@ -713,7 +680,7 @@
     margin-bottom: 12px;
   }
   .saved-stat {
-    background: var(--panel-alt);
+    background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 8px 12px;
@@ -735,13 +702,13 @@
     margin-top: 2px;
   }
 
-  .password-input-row {
+  .password-row {
     display: flex;
     gap: 8px;
     margin-bottom: 12px;
     align-items: center;
   }
-  .password-input-row input {
+  .password-row input {
     flex: 1;
     padding: 8px 12px;
     background: var(--bg);
@@ -750,11 +717,8 @@
     color: var(--text);
     font-size: 13px;
   }
-  .password-input-row input:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-  .password-input-row .login-btn {
+  .password-row input:focus { outline: none; border-color: var(--accent); }
+  .password-row .login-btn {
     padding: 8px 16px;
     background: var(--accent);
     border: none;
@@ -765,15 +729,42 @@
     font-size: 13px;
     white-space: nowrap;
   }
-  .password-input-row .login-btn:hover {
-    filter: brightness(1.1);
-  }
+  .password-row .login-btn:hover { opacity: 0.85; }
   .password-error {
     color: var(--bad);
     font-size: 12px;
     display: none;
     margin-bottom: 8px;
   }
+
+  .saved-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .saved-header .title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .saved-header .actions { display: flex; gap: 6px; align-items: center; }
+  .saved-count { font-size: 11px; color: var(--text-faint); }
+  .saved-loading {
+    color: var(--text-faint);
+    font-size: 13px;
+    padding: 20px;
+    text-align: center;
+  }
+  .refresh-btn {
+    padding: 4px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--text); }
   .export-btn {
     padding: 4px 12px;
     background: var(--good-soft);
@@ -784,29 +775,24 @@
     cursor: pointer;
     font-weight: 600;
   }
-  .export-btn:hover {
-    background: var(--good);
-    color: #0b0d12;
-  }
+  .export-btn:hover { background: var(--good); color: #0b0d12; }
 
-  /* ---------- Detail Modal ---------- */
+  /* ─── Modal ──────────────────────────────────────────────────────────── */
   .modal-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0,0,0,0.85);
     z-index: 1000;
     justify-content: center;
     align-items: center;
     padding: 20px;
   }
-  .modal-overlay.active {
-    display: flex;
-  }
+  .modal-overlay.active { display: flex; }
   .modal {
-    background: var(--panel);
+    background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius);
     max-width: 700px;
     width: 100%;
     max-height: 90vh;
@@ -821,11 +807,7 @@
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
   }
-  .modal-header h3 {
-    color: var(--text);
-    font-size: 16px;
-    margin: 0;
-  }
+  .modal-header h3 { font-size: 16px; font-weight: 600; color: var(--text); margin: 0; }
   .modal-close {
     background: none;
     border: none;
@@ -833,13 +815,11 @@
     font-size: 20px;
     cursor: pointer;
   }
-  .modal-close:hover {
-    color: var(--text);
-  }
+  .modal-close:hover { color: var(--text); }
   .modal-body .detail-row {
     display: flex;
     padding: 6px 0;
-    border-bottom: 1px solid var(--border-alt);
+    border-bottom: 1px solid var(--border);
     font-size: 13px;
   }
   .modal-body .detail-row .label {
@@ -847,10 +827,7 @@
     width: 120px;
     flex-shrink: 0;
   }
-  .modal-body .detail-row .value {
-    color: var(--text);
-    word-break: break-word;
-  }
+  .modal-body .detail-row .value { color: var(--text); word-break: break-word; }
   .modal-body .detail-row .value pre {
     background: var(--bg);
     padding: 10px;
@@ -863,59 +840,57 @@
     font-family: var(--mono);
   }
 
-  .refresh-btn {
-    padding: 4px 12px;
-    background: var(--panel-raised);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    border-radius: var(--radius-sm);
-    font-size: 10px;
-    cursor: pointer;
-    font-weight: 600;
+  .hint {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: 16px;
+    line-height: 1.6;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
   }
-  .refresh-btn:hover {
-    border-color: var(--accent);
-    color: var(--text);
+  .hint code {
+    font-family: var(--mono);
+    color: var(--text-dim);
+    background: var(--bg-input);
+    padding: 1px 5px;
+    border-radius: 4px;
   }
 
-  .saved-header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .saved-header-row .title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .saved-header-row .actions {
-    display: flex;
-    gap: 6px;
-    align-items: center;
+  /* ─── Utilities ──────────────────────────────────────────────────────── */
+  .hidden { display: none !important; }
+  .mt-8 { margin-top: 8px; }
+  .gap-8 { gap: 8px; }
+  .flex { display: flex; }
+  .flex-wrap { flex-wrap: wrap; }
+  .items-center { align-items: center; }
+
+  /* ─── Responsive ──────────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    .topbar { padding: 10px 16px; }
+    .topbar .route { display: none; }
+    .layout { padding: 12px; }
+    .panel { padding: 14px; }
+    .metric-grid { grid-template-columns: repeat(2, 1fr); }
+    .post-record-row { flex-direction: column; align-items: stretch; }
+    .analyze-btn { width: 100%; justify-content: center; }
+    .modal { padding: 16px; margin: 10px; }
   }
 </style>
 </head>
 <body>
   <header class="topbar">
-    <h1>VoiceCoach Debug UI</h1>
-    <div class="pipeline-strip">
-      <span class="route">POST /debug/analyze-audio</span>
-      <span class="step">save_and_convert</span>
-      <span class="arrow">→</span>
-      <span class="step">transcribe_wav</span>
-      <span class="arrow">→</span>
-      <span class="step">score_free_speech</span>
-      <span class="tag-nonprod">debug only</span>
-    </div>
+    <h1>
+      <span class="dot"></span>
+      VoiceCoach
+      <span class="tag">debug</span>
+    </h1>
+    <span class="route">/debug/analyze-audio</span>
   </header>
 
   <main class="layout">
-    <!-- LEFT: input -->
+    <!-- ─── LEFT: Input ────────────────────────────────────────────────── -->
     <section class="panel input-panel">
-      <h2>Microphone</h2>
+      <h2>Record &amp; Analyze</h2>
 
       <div class="recorder-box" id="recorderBox">
         <div class="waveform" id="waveform">
@@ -929,7 +904,7 @@
           <span class="dot"></span> Start recording
         </button>
 
-        <div class="recorder-status-row">
+        <div class="recorder-status">
           <span id="recStatus" class="rec-status">Ready</span>
           <span id="recTimer" class="rec-timer">00:00</span>
         </div>
@@ -941,82 +916,82 @@
           <button id="analyzeBtn" class="analyze-btn" disabled>Analyze recording</button>
         </div>
 
-        <div id="recorderError" class="notice error-inline"></div>
+        <div id="recorderError" class="error-inline"></div>
       </div>
 
-      <div class="pron-provider-box" id="sttProviderBox">
-        <div class="pron-provider-label">Speech-to-Text Engine</div>
-        <label class="pron-provider-option" data-provider="whisper">
+      <!-- STT Provider -->
+      <div class="provider-section" id="sttProviderBox">
+        <div class="label">Speech-to-Text</div>
+        <label class="provider-option" data-provider="whisper">
           <input type="radio" name="sttProvider" value="whisper" checked>
-          <span class="pron-provider-name">Whisper — Default</span>
-          <span class="pron-provider-badge" data-badge="whisper"></span>
+          <span class="name">Whisper</span>
+          <span class="badge" data-badge="whisper"></span>
         </label>
-        <label class="pron-provider-option" data-provider="saaras">
+        <label class="provider-option" data-provider="saaras">
           <input type="radio" name="sttProvider" value="saaras">
-          <span class="pron-provider-name">Saaras (Sarvam)</span>
-          <span class="pron-provider-badge" data-badge="saaras"></span>
+          <span class="name">Saaras</span>
+          <span class="badge" data-badge="saaras"></span>
         </label>
       </div>
 
-      <div class="pron-provider-box" id="pronProviderBox">
-        <div class="pron-provider-label">Pronunciation Assessment</div>
-        <label class="pron-provider-option" data-provider="whisper_confidence">
+      <!-- Pronunciation Provider -->
+      <div class="provider-section" id="pronProviderBox">
+        <div class="label">Pronunciation</div>
+        <label class="provider-option" data-provider="whisper_confidence">
           <input type="radio" name="pronunciationProvider" value="whisper_confidence" checked>
-          <span class="pron-provider-name">Whisper Confidence — Default</span>
-          <span class="pron-provider-badge" data-badge="whisper_confidence"></span>
+          <span class="name">Whisper Confidence</span>
+          <span class="badge" data-badge="whisper_confidence"></span>
         </label>
-        <label class="pron-provider-option" data-provider="saaras">
+        <label class="provider-option" data-provider="saaras">
           <input type="radio" name="pronunciationProvider" value="saaras">
-          <span class="pron-provider-name">Saaras (Sarvam) — Recommended</span>
-          <span class="pron-provider-badge" data-badge="saaras"></span>
+          <span class="name">Saaras</span>
+          <span class="badge" data-badge="saaras"></span>
         </label>
-        <label class="pron-provider-option" data-provider="local_llm">
+        <label class="provider-option" data-provider="local_llm">
           <input type="radio" name="pronunciationProvider" value="local_llm">
-          <span class="pron-provider-name">Local LLM</span>
-          <span class="pron-provider-badge" data-badge="local_llm"></span>
+          <span class="name">Local LLM</span>
+          <span class="badge" data-badge="local_llm"></span>
         </label>
-        <label class="pron-provider-option is-disabled" data-provider="gop">
+        <label class="provider-option is-disabled" data-provider="gop">
           <input type="radio" name="pronunciationProvider" value="gop" disabled>
-          <span class="pron-provider-name">Custom GOP — Coming Soon</span>
-          <span class="pron-provider-badge" data-badge="gop"></span>
+          <span class="name">GOP</span>
+          <span class="badge coming" data-badge="gop">Coming soon</span>
         </label>
       </div>
 
-      <div class="status-line-row">
-        <span id="statusLine" class="status-line"></span>
-      </div>
+      <div id="statusLine" class="status-line"></div>
 
       <p class="hint">
-        Records straight from your microphone in the browser (<code>MediaRecorder</code>),
-        then sends the recording through the same pipeline production uses,
-        via a debug-only route that skips login. Nothing here re-implements
-        STT or scoring — you're seeing the real backend output.
+        Records from your microphone and sends it through the real backend pipeline.
+        <code>save_and_convert</code> → <code>transcribe_wav</code> → <code>score_free_speech</code>
       </p>
     </section>
 
-    <!-- RIGHT: results with tabs -->
+    <!-- ─── RIGHT: Results ──────────────────────────────────────────────── -->
     <section class="results" id="results">
-      <div class="debug-tabs">
-        <button class="debug-tab active" data-tab="analysis" onclick="switchTab('analysis')">
-          🔬 Analysis Results
+      <div class="tabs">
+        <button class="tab active" data-tab="analysis" onclick="switchTab('analysis')">
+          🔬 Analysis
         </button>
-        <button class="debug-tab" data-tab="saved" onclick="switchTab('saved')">
-          📊 Saved Results <span class="badge" id="savedBadge">0</span>
+        <button class="tab" data-tab="saved" onclick="switchTab('saved')">
+          📊 Saved <span class="badge" id="savedBadge">0</span>
         </button>
       </div>
 
       <!-- Analysis Tab -->
       <div class="tab-content active" id="tab-analysis">
-        <div class="empty-state" id="emptyState">Record something with the microphone, then click Analyze Recording.</div>
+        <div class="empty-state" id="emptyState">
+          Record something with the microphone, then click <strong>Analyze recording</strong>.
+        </div>
         <div id="analysisResults"></div>
       </div>
 
       <!-- Saved Results Tab -->
       <div class="tab-content" id="tab-saved">
         <div id="savedContent">
-          <div class="password-input-row">
-            <input type="password" id="tutorPassword" placeholder="Enter password (default: tutor123)" value="tutor123" />
-            <button class="login-btn" onclick="loadSavedResults()">🔓 View</button>
+          <div class="password-row">
+            <input type="password" id="tutorPassword" placeholder="Password (default: tutor123)" value="tutor123" />
+            <button class="login-btn" onclick="loadSavedResults()">View</button>
           </div>
           <div id="passwordError" class="password-error">Incorrect password. Please try again.</div>
           <div id="savedResultsContainer">
@@ -1027,7 +1002,7 @@
     </section>
   </main>
 
-  <!-- Detail Modal -->
+  <!-- ─── Detail Modal ────────────────────────────────────────────────── -->
   <div class="modal-overlay" id="detailModal">
     <div class="modal">
       <div class="modal-header">
