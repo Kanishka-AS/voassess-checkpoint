@@ -376,6 +376,7 @@ def _determiner_noun_number(toks: list, context: str) -> list:
                 continue
             article = "an" if singular_form[:1] in "aeiou" else "a"
             issues.append(_make_issue(
+
                 wrong=f"{det.text} {noun.text}", correct=f"{article} {singular_form}",
                 offset=det.start, length=noun.end - det.start,
                 message=(f"'{det.text}' takes a singular noun — use "

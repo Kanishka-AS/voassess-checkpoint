@@ -367,7 +367,7 @@ before or after) matching exactly this shape:
     "other_weaknesses": "any other genuine, evidence-grounded observation, or 'None noted.'"
   },
   "vocabulary": {
-    "active_vocabulary_note": "1-2 sentences using the unique_words/total_words/CEFR values given",
+    "active_vocabulary_note": "1-2 sentences using the unique_words/total_words values given — do NOT mention CEFR level, a level name (A1-C2), or any level/proficiency label anywhere in this note; CEFR is not part of the vocabulary section",
     "useful_higher_level_words_used": ["actual words pulled from the transcript that are genuinely higher-level; empty list if none"],
     "suggestions_for_improving_vocabulary": "same conservatism as vocabulary_improvements above — only a genuinely natural-sounding suggestion, or a plain statement that none is needed"
   },
@@ -758,8 +758,9 @@ def merge_report(model_report: dict, report_evidence: dict) -> dict:
         "growth_areas": growth_areas,
         "vocabulary": {
             **model_report.get("vocabulary", {}),
-            "active_vocabulary_size": report_evidence.get("vocabulary", {}).get("unique_words"),
-            "cefr_level": report_evidence.get("cefr", {}).get("level"),
+            # Per requirement: no CEFR/level information is surfaced inside the
+            # Vocabulary section — CEFR stays exclusively in the top-level `cefr`
+            # object, owned by the deterministic backend rubric in app.py.
             "unique_words": report_evidence.get("vocabulary", {}).get("unique_words"),
             "vocabulary_distribution_by_level": report_evidence.get("vocabulary", {})
                 .get("vocabulary_distribution_by_level"),

@@ -21,10 +21,14 @@ Four dimensions are measured, each already length-robust on its own:
   3. Vocabulary variety     — MATTR restricted to content words only,
                                i.e. how varied the *meaningful* vocabulary
                                is, independent of function-word padding.
-  4. Repetition             — fraction of content-word tokens that are
-                               repeats of an already-used content word;
-                               applied as a capped multiplicative discount,
-                               not a subtracted "fudge factor".
+  4. Repetition             — proximity-weighted fraction of content-word
+                               tokens that are repeats of an already-used
+                               content word (repeats close to their prior
+                               occurrence count fully, distant ones are
+                               discounted — see REPETITION_PROXIMITY_WINDOW
+                               below for why); applied as a capped
+                               multiplicative discount, not a subtracted
+                               "fudge factor".
 
 A response's overall word count then gates how much these measured
 dimensions are trusted (`evidence_factor`): short answers are pulled
@@ -37,7 +41,6 @@ lexical-sophistication/diversity signal only. See DESIGN.md.
 from __future__ import annotations
 
 import re
-from collections import Counter
 
 from wordfreq import zipf_frequency
 
@@ -243,6 +246,60 @@ def word_sophistication_with_proper_noun_filter(word: str, original_word: str) -
 REPETITION_RATIO_AT_FULL_PENALTY = 0.35
 REPETITION_MAX_PENALTY_FRACTION = 0.25
 
+# Proximity window for repetition weighting, in content words. Deliberately
+# reuses CONTENT_MATTR_WINDOW rather than introducing a new threshold.
+#
+# WHY: a flat "any repeat of a content word counts the same" excess count
+# cannot distinguish a speaker reusing their own discourse topic across a
+# multi-sentence passage from a speaker repeating a word for lack of an
+# alternative close together. Audited on a real transcript (191 words)
+# where every one of its 10 repeated content words sat 9+ content-words
+# apart from its prior occurrence (i.e. the sample contained zero
+# back-to-back/disfluent repetition), yet the flat count still applied a
+# uniform penalty to all of them — including words like "communication"
+# and "several" reused 71 words apart, which is far more consistent with
+# natural topical reuse than limited vocabulary.
+#
+# Each repeat is now weighted by how close it is to its most recent prior
+# occurrence: weight = min(REPETITION_PROXIMITY_WINDOW / distance, 1.0).
+# Repeats within the window count fully; repeats further apart are
+# discounted toward zero, since the further apart two mentions of the same
+# word are, the more plausible it is that they reflect the speaker
+# returning to their subject rather than a narrow working vocabulary.
+#
+# KNOWN LIMITATION, not fixed by this change: a genuinely central topic
+# word (e.g. "vocabulary" in a response about measuring vocabulary) can
+# still cluster within the proximity window if the speaker elaborates on
+# it across several short, adjacent sentences — distance alone cannot
+# distinguish that from a real close-together redundancy at the same
+# distance. See DESIGN.md for the flagged (not yet implemented) follow-up:
+# a frequency-based exemption for a response's single most-repeated content
+# word, which needs a separate validated threshold and is not part of this
+# change.
+REPETITION_PROXIMITY_WINDOW = CONTENT_MATTR_WINDOW
+
+
+def _weighted_repetition_excess(content_words: list[str], window: int) -> float:
+    """Proximity-weighted count of 'excess' content-word repeats.
+
+    Walks the content-word sequence once, tracking each word's most recent
+    prior position. Every repeat contributes `min(window / distance, 1.0)`
+    to the total instead of a flat 1 — close-together repeats count fully,
+    distant ones are discounted. Pure position arithmetic, deterministic,
+    no new dependency.
+    """
+    last_seen: dict[str, int] = {}
+    weighted_excess = 0.0
+    for i, w in enumerate(content_words):
+        prior = last_seen.get(w)
+        if prior is not None:
+            distance = i - prior
+            weight = 1.0 if distance <= 0 else min(window / distance, 1.0)
+            weighted_excess += weight
+        last_seen[w] = i
+    return weighted_excess
+
+
 # ── Evidence / short-response dampening ──────────────────────────────────
 EVIDENCE_TARGET_CONTENT_WORDS = 12
 NEUTRAL_BASELINE_SCORE = 50.0
@@ -302,9 +359,8 @@ def extract_vocabulary_features(transcript: str) -> dict:
         advanced_ratio = 0.0
 
     if content_words:
-        counts = Counter(content_words)
-        excess = sum(c - 1 for c in counts.values() if c > 1)
-        repetition_ratio = excess / len(content_words)
+        weighted_excess = _weighted_repetition_excess(content_words, REPETITION_PROXIMITY_WINDOW)
+        repetition_ratio = weighted_excess / len(content_words)
     else:
         repetition_ratio = 0.0
 

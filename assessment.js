@@ -192,9 +192,7 @@
 
     const body = `
       <div class="lr-metric-row">
-        ${lrMetric("Active vocabulary", trVocab.active_vocabulary_size ?? v.unique_words)}
-        ${lrMetric("Vocabulary level", trVocab.cefr_level || (data.cefr && data.cefr.level))}
-        ${lrMetric("Unique words", v.unique_words)}
+        ${lrMetric("Unique words used", v.unique_words)}
         ${lrMetric("Total words", v.total_words)}
       </div>
       ${distHtml}
