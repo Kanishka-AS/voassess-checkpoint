@@ -14,19 +14,30 @@ pure function over the transcript text plus whatever `/v2/analyze` already
 returned for this request (or `None`, in which case it degrades to
 punctuation/word-list heuristics only; see `_build_tokens`).
 
-Two kinds of signal are produced:
+Three kinds of signal are produced, and they are never merged into one
+another:
 
   1. **Fillers** — filled pauses ("uh", "um", ...) and discourse fillers
      ("like", "you know", "I mean", ...) that are genuinely functioning as
-     hesitation/hedging devices in context. These count toward `count` /
-     `rate_per_min` and are what `app.py` feeds into the existing
-     `score_fillers()` formula.
+     hesitation/hedging devices in context, identified from the transcript
+     text itself (lexical evidence). These count toward `count` /
+     `spoken_count` / `rate_per_min` and are the ONLY thing `app.py` feeds
+     into the existing `score_fillers()` formula.
 
   2. **Hesitations** — immediate word repetitions ("I I", "the the",
      "I... I...") reported separately (`hesitations`), since a repeated
      word is a distinct disfluency phenomenon from a filler word and the
      brief explicitly asks not to fold every repetition into the filler
      count.
+
+  3. **Acoustic hesitations** — low-energy/silence segments detected
+     straight from the waveform (`acoustic_hesitations` /
+     `acoustic_hesitation_count`), with no lexical content identified.
+     This is disfluency evidence at best, never spoken-filler evidence: a
+     silent pause is not "uh", and this module never treats it as one. It
+     is not added to `occurrences` or `count`, and its timestamps are audio
+     seconds, not transcript character offsets, so it can't accidentally be
+     used to splice the transcript either.
 
 Design notes
 ------------
@@ -416,11 +427,27 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
 
     Returns:
         {
-          "count": int,
+          "count": int,                 # SPOKEN filler count — the only count
+                                         # score_fillers()/overall are allowed to use
+          "spoken_count": int,          # alias of "count", named explicitly so
+                                         # callers can't confuse it with an
+                                         # acoustic count
           "rate_per_min": float | None,
           "occurrences": [ {word, start, end, type, confidence, reason}, ... ],
+                                         # SPOKEN evidence only — transcript
+                                         # char offsets, safe to splice into
+                                         # the transcript text
           "hesitations": [ {phrase, start, end, type, confidence, reason}, ... ],
-          "audio_fillers": [ {start, end, duration, type, confidence}, ... ],  # NEW
+                                         # word-repetition disfluencies (e.g. "I I") —
+                                         # distinct from fillers, not counted in "count"
+          "acoustic_hesitations": [ {start_seconds, end_seconds, duration_seconds,
+                                      type, confidence, reason}, ... ],
+                                         # RMS-energy low-energy/silence segments —
+                                         # acoustic evidence only, NEVER counted in
+                                         # "count"/"occurrences". Times are audio
+                                         # seconds, not transcript character offsets —
+                                         # do not use these to splice the transcript.
+          "acoustic_hesitation_count": int,
           "debug": [ {...} , ... ],   # only present when debug=True
         }
     """
@@ -451,8 +478,10 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
         print()
 
     if not transcript or not transcript.strip():
-        result = {"count": 0, "rate_per_min": 0.0 if duration_seconds else None,
-                   "occurrences": [], "hesitations": [], "audio_fillers": []}
+        result = {"count": 0, "spoken_count": 0,
+                   "rate_per_min": 0.0 if duration_seconds else None,
+                   "occurrences": [], "hesitations": [],
+                   "acoustic_hesitations": [], "acoustic_hesitation_count": 0}
         if debug:
             result["debug"] = []
         return result
@@ -495,45 +524,55 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
             occurrences.append(_occ([tok], ftype, confidence, reason))
 
     occurrences.sort(key=lambda o: o["start"])
+    # `count` is the SPOKEN filler count — the only thing score_fillers()
+    # (and everything downstream of it: filler score, clarity, overall,
+    # archetype, feedback text) is allowed to see. Every entry in
+    # `occurrences` at this point is lexical evidence: either a phrase/word
+    # match against the transcript text itself, or a POS/lemma-disambiguated
+    # single-word classification. Nothing acoustic-only has been added to
+    # it, and nothing below this line may add anything acoustic-only to it
+    # either — see `acoustic_hesitations` for that signal instead.
     count = len(occurrences)
 
-    # ── NEW: Audio-based filler detection ──────────────────────────────────
-    audio_fillers = []
+    # ── Acoustic hesitation detection (silence / low-energy segments) ──────
+    # `detect_fillers_from_audio()` is an RMS-energy heuristic over the raw
+    # waveform — it flags short low-energy gaps between spoken segments. It
+    # has no access to *what*, if anything, was said in that gap, so it can
+    # never tell a silent pause apart from an actual "um". That means it is
+    # acoustic hesitation / disfluency evidence, not spoken-filler evidence,
+    # and it MUST NOT be merged into `occurrences`/`count` — doing so is
+    # what let a silent pause get scored as though the speaker had said
+    # "um". These are kept in their own list, in their own units (audio
+    # seconds — never a transcript character offset, so nothing downstream
+    # can mistake them for a position to splice text at) and are exposed
+    # only as `acoustic_hesitations` / `acoustic_hesitation_count` for
+    # optional use as separate fluency/hesitation evidence.
+    acoustic_hesitations: list[dict] = []
     if audio_path and Path(audio_path).exists():
         try:
             from audio_utils import detect_fillers_from_audio
-            audio_fillers = detect_fillers_from_audio(audio_path)
-            
-            # Add audio fillers to occurrences (avoid duplicates by time)
-            for af in audio_fillers:
-                # Check if this filler is already in occurrences (by time overlap)
-                is_duplicate = False
-                for occ in occurrences:
-                    if abs(occ.get('start', 0) - af['start']) < 0.1:
-                        is_duplicate = True
-                        break
-                
-                if not is_duplicate:
-                    occurrences.append({
-                        'word': '[filler]',
-                        'start': af['start'],
-                        'end': af['end'],
-                        'type': 'filled_pause',
-                        'confidence': af['confidence'],
-                        'reason': f"Audio-based detection: {af['duration']:.3f}s low-energy segment"
-                    })
-            
-            # Re-sort by start time
-            occurrences.sort(key=lambda o: o.get('start', 0))
-            count = len(occurrences)
-            
-            if debug and audio_fillers:
-                print(f"Audio fillers detected: {len(audio_fillers)}")
-                for af in audio_fillers:
-                    print(f"  {af['start']:.2f}s - {af['end']:.2f}s (duration: {af['duration']:.3f}s)")
+            for af in detect_fillers_from_audio(audio_path):
+                acoustic_hesitations.append({
+                    "start_seconds": af["start"],
+                    "end_seconds": af["end"],
+                    "duration_seconds": af["duration"],
+                    "type": "acoustic_low_energy",
+                    "confidence": af["confidence"],
+                    "reason": (
+                        f"{af['duration']:.3f}s low-energy audio segment — "
+                        "acoustic hesitation evidence only; no lexical "
+                        "content was identified, so this is NOT counted as "
+                        "a spoken filler"
+                    ),
+                })
+            if debug and acoustic_hesitations:
+                print(f"Acoustic hesitations detected: {len(acoustic_hesitations)}")
+                for ah in acoustic_hesitations:
+                    print(f"  {ah['start_seconds']:.2f}s - {ah['end_seconds']:.2f}s "
+                          f"(duration: {ah['duration_seconds']:.3f}s) — not a spoken filler")
         except Exception as e:
             if debug:
-                print(f"Audio filler detection failed: {e}")
+                print(f"Acoustic hesitation detection failed: {e}")
 
     rate_per_min = None
     if duration_seconds and duration_seconds > 0:
@@ -541,10 +580,12 @@ def detect_fillers(transcript: str, linguistic_analysis: Optional[dict] = None,
 
     result = {
         "count": count,
+        "spoken_count": count,
         "rate_per_min": rate_per_min,
         "occurrences": occurrences,
         "hesitations": _detect_hesitations(transcript),
-        "audio_fillers": audio_fillers,  # NEW
+        "acoustic_hesitations": acoustic_hesitations,
+        "acoustic_hesitation_count": len(acoustic_hesitations),
     }
     if debug:
         result["debug"] = debug_log

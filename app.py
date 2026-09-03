@@ -1,6 +1,5 @@
 """
 VoiceCoach – Voice Assessment Backend
-Local STT via OpenAI Whisper · Grammar via language_tool_python (optional)
 """
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
@@ -265,42 +264,39 @@ FILLERS = [
 # ── Filler marker insertion ──────────────────────────────────────────────────
 def insert_filler_markers(transcript: str, filler_occurrences: list) -> str:
     """
-    Insert [filler] markers into the transcript at the correct positions.
-    Uses character offsets from filler occurrences.
+    Insert [word] markers into the transcript at the correct positions.
+
+    `filler_occurrences` must be filler_detector.detect_fillers()'s
+    `occurrences` list — SPOKEN filler evidence only, with `start`/`end`
+    as transcript character offsets. There is deliberately no branch here
+    for acoustic-only events: an acoustic low-energy/silence segment has no
+    transcript character offset (its `start`/`end` are audio seconds), so
+    there is no valid position to splice it into this text at. Marking one
+    used to be done by reusing the audio-seconds number as if it were a
+    character index, which is exactly how markers ended up landing inside
+    words (e.g. "thinkin[filler]g") instead of between them. Acoustic
+    hesitations are surfaced separately via `acoustic_hesitations` /
+    `acoustic_hesitation_count` and are never spliced into the transcript.
     """
     if not filler_occurrences:
         return transcript
-    
-    # Only process fillers that have character positions (not audio-only)
-    # Audio fillers have word == '[filler]' and need to be inserted at approximate positions
-    # Regular fillers have actual words and positions in the transcript
-    
+
     # Sort by start offset (descending so we don't mess up positions)
     sorted_fillers = sorted(filler_occurrences, key=lambda x: x.get('start', 0), reverse=True)
-    
+
     result = list(transcript)
     inserted_count = 0
-    
+
     for f in sorted_fillers:
         start = f.get('start', 0)
         end = f.get('end', 0)
         word = f.get('word', '')
-        
+
         # Convert to integer indices (truncate float to int)
         start_idx = int(start)
         end_idx = int(end)
-        
-        # If it's an audio filler ([filler]), insert marker at the nearest position
-        if word == '[filler]':
-            # Only insert if we have a valid position
-            if start_idx < len(transcript):
-                adj_start = start_idx + inserted_count
-                # Find the nearest word boundary (space or punctuation)
-                # Insert at the position
-                result.insert(adj_start, '[filler] ')
-                inserted_count += 9  # length of "[filler] "
-        elif start_idx < len(transcript) and end_idx <= len(transcript):
-            # For regular fillers, just mark the word
+
+        if start_idx < len(transcript) and end_idx <= len(transcript):
             # Check if the word exists at this position
             adj_start = start_idx + inserted_count
             adj_end = end_idx + inserted_count
@@ -311,7 +307,7 @@ def insert_filler_markers(transcript: str, filler_occurrences: list) -> str:
                     result[adj_start:adj_end] = f'[{word}]'
                     # Word length stays the same, but we added 2 chars for brackets
                     inserted_count += 2
-    
+
     return ''.join(result)
 
 
@@ -784,7 +780,7 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
     wpm      = (word_count / max(duration, 1)) * 60
     pace_s   = score_pace(wpm)
 
-    # ── Fillers — context-aware detection with audio-based fallback ──────
+    # ── Fillers — context-aware detection, spoken vs. acoustic kept separate ──
     # Replaces the old flat regex/word-list scan over FILLERS. Reuses the
     # existing, separately-tested module as-is (tests/test_filler_detector.py)
     # — no filler-classification logic duplicated here. score_fillers()'s
@@ -792,16 +788,22 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
     # Repetitions/hesitations ("I I", "the the") are a distinct disfluency
     # signal and are kept out of the filler count — see `hesitations` below.
     #
-    # NEW: Audio-based filler detection catches "um", "uh", "er" even when
-    # Whisper drops them from the transcript. The wav_path is passed through
-    # to detect_fillers() which merges audio fillers with transcript fillers.
+    # The wav_path is passed through so detect_fillers() can also run its
+    # RMS-energy acoustic hesitation detector (catches genuine low-energy/
+    # silence gaps that Whisper's transcript wouldn't show). That signal is
+    # int­entionally kept OUT of `fillers["count"]` — see filler_detector.py's
+    # module docstring. `filler_count` below must stay equal to
+    # `fillers["count"]` (spoken evidence only): it is what feeds
+    # score_fillers() -> filler_s -> clarity_s -> overall, so an acoustic
+    # silence must never inflate it the way "spoken filler usage" should.
     fillers = detect_fillers(
         transcript,
         linguistic_analysis,
         duration_seconds=duration,
         audio_path=wav_path
     )
-    filler_count = fillers["count"]
+    filler_count = fillers["count"]  # SPOKEN fillers only — see filler_detector.py
+    acoustic_hesitation_count = fillers["acoustic_hesitation_count"]
     found = summarize_words(fillers["occurrences"])
     filler_s = score_fillers(filler_count, word_count)
 
@@ -862,6 +864,14 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
     # computed above; no new model call, no new audio pass.
     pause_info = analyze_pauses(segments, duration)
     fluency = score_fluency(pause_info, filler_count, len(fillers["hesitations"]), word_count)
+    # Acoustic hesitation count is informational only here — it is exposed
+    # alongside the fluency signal (real word-timestamp pause gaps +
+    # spoken filler/repetition rate) rather than folded into
+    # score_fluency()'s formula. The brief is explicit: don't redesign the
+    # scoring system, and don't double-penalize the same hesitation once as
+    # a filler and again as a fluency deduction unless that's already the
+    # existing, intended behavior. score_fluency()'s formula is unchanged.
+    fluency["acoustic_hesitation_count"] = acoustic_hesitation_count
 
     archetype = determine_voice_archetype(pace_s, filler_s, pronun_s, grammar_s,
                                            clarity_s, vocab["score"], cefr["level"])
@@ -907,7 +917,15 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
             "score": round(filler_s, 1), "count": filler_count, "words": found,
             "occurrences": fillers["occurrences"],
             "rate_per_min": fillers["rate_per_min"],
-            "audio_fillers": fillers.get("audio_fillers", []),
+            # SPOKEN filler evidence — count/score/occurrences above are
+            # derived from this and this alone.
+            "spoken_count": filler_count,
+            "spoken_fillers": found,
+            # ACOUSTIC hesitation evidence — RMS-energy low-energy/silence
+            # segments. Kept fully separate: informational disfluency
+            # signal only, never folded into score/count/occurrences above.
+            "acoustic_hesitations": fillers.get("acoustic_hesitations", []),
+            "acoustic_hesitation_count": acoustic_hesitation_count,
         },
         "pronunciation":{
             "score": round(pronun_s, 1), "issues": pronun_issues,
@@ -1193,13 +1211,38 @@ async def assessment_finalize(request: Request, payload: dict):
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+    # Groq teacher report — same existing mechanism already used by
+    # /debug/analyze-audio (see groq_provider.generate_teacher_report()),
+    # now also wired into the production guided-assessment path per its own
+    # docstring ("the `final` stage of a guided assessment"). Additive,
+    # second step on top of the deterministic evidence above (final_stage);
+    # never touches any score/evidence. If GROQ_API_KEY is unset or the
+    # request/parse fails, teacher_report is just null and the rest of the
+    # response/report is unaffected — no duplicate frontend Groq call exists
+    # anywhere in this codebase.
+    try:
+        teacher_report_result = generate_teacher_report(
+            final_stage.get("transcript", ""),
+            final_stage.get("transcript_with_fillers"),
+            final_stage,
+            vocab_agg=vocab_agg,
+            cefr_agg=cefr_agg,
+            name=name,
+        )
+        teacher_report = teacher_report_result.report if teacher_report_result.available else None
+        teacher_report_detail = teacher_report_result.detail
+    except Exception as e:
+        teacher_report = None
+        teacher_report_detail = f"Teacher report generation raised an unexpected error: {e}"
+
     aid = db.save_english_assessment(
         timestamp=ts, name=name,
         picture_talk_score=picture_talk_score, media_repeat_score=media_repeat_score,
         picture_describe_score=picture_describe_score, overall_score=overall_score,
         final_stage=final_stage, vocab_score=vocab_agg["score"], cefr_score=cefr_agg["score"],
         cefr_level=cefr_agg["level"], archetype=final_stage["archetype"]["archetype"],
-        stages=stages, user_id=user["id"])
+        stages=stages, user_id=user["id"],
+        teacher_report=teacher_report, teacher_report_detail=teacher_report_detail)
 
     return {
         "id": aid, "timestamp": ts, "name": name,
@@ -1215,6 +1258,8 @@ async def assessment_finalize(request: Request, payload: dict):
                                   "items": [s for s in stages if s.get("stage_type") == "picture_describe"]},
         },
         "final": final_stage,
+        "teacher_report": teacher_report,
+        "teacher_report_detail": teacher_report_detail,
     }
 
 
@@ -1339,7 +1384,9 @@ async def debug_analyze_text(payload: dict):
         "transcript": transcript,
         "overall": None,
         "pace": {"score": None, "wpm": None},
-        "filler": {"score": None, "count": 0, "words": [], "occurrences": [], "rate_per_min": None},
+        "filler": {"score": None, "count": 0, "words": [], "occurrences": [], "rate_per_min": None,
+                   "spoken_count": 0, "spoken_fillers": [],
+                   "acoustic_hesitations": [], "acoustic_hesitation_count": 0},
         "pronunciation": {"score": None, "issues": [], "provider": "text_only", "requested_provider": "text_only", "available": True, "detail": None, "methodology": None},
         "grammar": {"score": round(grammar_s, 1), "errors": ge, "issues": grammar_issues},
         "grammar_context": grammar_context,

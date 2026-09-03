@@ -270,10 +270,22 @@ def build_report_evidence(transcript: str, transcript_with_fillers: Optional[str
         "overall_score": evidence.get("overall"),
         "pace": evidence.get("pace"),
         "filler": {
+            # SPOKEN filler evidence — "count"/"score" are the ONLY filler
+            # numbers Groq should narrate as filler usage. Kept under the
+            # existing "count"/"score" keys for backward compatibility with
+            # the prompt template below, but they are spoken-only now (see
+            # filler_detector.py) — no acoustic silence is folded in here.
             "score": evidence.get("filler", {}).get("score"),
             "count": evidence.get("filler", {}).get("count"),
             "words_detected": evidence.get("filler", {}).get("words"),
             "rate_per_min": evidence.get("filler", {}).get("rate_per_min"),
+            "spoken_filler_count": evidence.get("filler", {}).get("spoken_count"),
+            "spoken_fillers": evidence.get("filler", {}).get("spoken_fillers"),
+            # ACOUSTIC hesitation evidence — separate signal, NOT spoken
+            # filler usage. Given its own field so Groq can mention it (if
+            # at all) as uncertain acoustic hesitation, never re-labeled as
+            # "the speaker said um/uh".
+            "acoustic_hesitation_count": evidence.get("filler", {}).get("acoustic_hesitation_count"),
         },
         "hesitations": evidence.get("hesitations"),
         "grammar": {
@@ -424,7 +436,15 @@ def build_teacher_prompt(transcript: str, transcript_with_fillers: Optional[str]
         "8. For fillers, if filler.count is greater than zero, explain the concrete "
         "effect of that many fillers on this specific delivery and give practical, "
         "specific techniques for reducing them — never just restate the count with "
-        "no explanation.\n\n"
+        "no explanation.\n"
+        "9. filler.count / filler.spoken_filler_count / filler.spoken_fillers are the "
+        "ONLY evidence of actual spoken filler words (\"uh\", \"um\", \"like\", etc.) — "
+        "treat these as the sole source of truth for filler usage. "
+        "filler.acoustic_hesitation_count is a SEPARATE, uncertain acoustic signal "
+        "(silence/low-energy audio segments with no identified spoken content) — "
+        "never describe it as the student saying a filler word, never add it to or "
+        "restate it as a filler count, and only mention it (if at all) as general "
+        "hesitation/pausing, phrased as uncertain, not as confirmed filler usage.\n\n"
         + REPORT_JSON_SCHEMA_INSTRUCTIONS
     )
 

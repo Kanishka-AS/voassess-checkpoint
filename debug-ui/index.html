@@ -8,28 +8,35 @@
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
   :root {
-    --bg: #0b0d12;
-    --bg-card: #12151e;
-    --bg-input: #1a1d26;
-    --border: #252a35;
-    --border-light: #2f3542;
-    --text: #eaeef2;
-    --text-dim: #8b93a0;
-    --text-faint: #585f6d;
+    /* Light "paper" palette — same tokens the Learner Report card already
+       used (hardcoded, since it was designed as a one-off light surface
+       inside an otherwise dark app). Moving those exact values up into the
+       shared variables means every dark-themed component below (built on
+       var(--bg-card)/var(--bg-input)/etc.) re-themes itself automatically,
+       and the report card now sits flush with the rest of the page instead
+       of looking like a different app. */
+    --bg: #f5f2ea;
+    --bg-card: #ffffff;
+    --bg-input: #f0ede4;
+    --border: #e2ded3;
+    --border-light: #d3cdbd;
+    --text: #263238;
+    --text-dim: #56636b;
+    --text-faint: #8a97a0;
     --accent: #5b8def;
-    --accent-hover: #7aa1f2;
+    --accent-hover: #4a7ce0;
     --accent-soft: rgba(91, 141, 239, 0.12);
-    --good: #3ecf8e;
-    --good-soft: rgba(62, 207, 142, 0.1);
-    --bad: #ef5b5b;
-    --bad-soft: rgba(239, 91, 91, 0.08);
-    --warn: #e8b339;
-    --warn-soft: rgba(232, 179, 57, 0.08);
+    --good: #1a8f5e;
+    --good-soft: #e3f5eb;
+    --bad: #c2453f;
+    --bad-soft: #fbe6e5;
+    --warn: #b3821a;
+    --warn-soft: #fbf0d9;
     --radius: 10px;
     --radius-sm: 6px;
     --mono: "JetBrains Mono", monospace;
     --sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-    --shadow: 0 2px 12px rgba(0,0,0,0.4);
+    --shadow: 0 2px 10px rgba(31,45,51,0.08);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -76,7 +83,7 @@
     background: var(--warn-soft);
     padding: 3px 10px;
     border-radius: 999px;
-    border: 1px solid rgba(232,179,57,0.2);
+    border: 1px solid rgba(179,130,26,0.25);
     margin-left: 4px;
   }
   .topbar .route {
@@ -138,13 +145,13 @@
     gap: 3px;
     height: 40px;
     margin-bottom: 16px;
-    background: rgba(0,0,0,0.3);
+    background: rgba(38, 50, 56, 0.05);
     border-radius: var(--radius-sm);
   }
   .waveform .bar {
     width: 3px;
     border-radius: 2px;
-    background: var(--border-light);
+    background: var(--text-faint);
     height: 6px;
     transition: height 0.1s ease, background 0.2s ease;
   }
@@ -157,7 +164,7 @@
     justify-content: center;
     gap: 10px;
     background: var(--accent);
-    color: #0b0d12;
+    color: #1f2d33;
     border: none;
     padding: 14px 20px;
     border-radius: var(--radius-sm);
@@ -239,7 +246,7 @@
 
   .analyze-btn {
     background: var(--good);
-    color: #0b0d12;
+    color: #ffffff;
     border: none;
     padding: 9px 22px;
     border-radius: var(--radius-sm);
@@ -313,7 +320,7 @@
     display: inline-block;
     color: var(--warn);
     background: var(--warn-soft);
-    border: 1px solid rgba(232,179,57,0.2);
+    border: 1px solid rgba(179,130,26,0.25);
   }
   .provider-option .badge.coming {
     display: inline-block;
@@ -641,6 +648,42 @@
   .lr-dist-row .dist-pct { width: 40px; text-align: right; color: #1f2d33; font-family: var(--mono); }
   .lr-transcript { background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm); padding: 14px 16px; font-size: 13.5px; line-height: 1.7; color: #33454c; white-space: pre-wrap; }
   .lr-gap-note { font-size: 12px; color: #8a97a0; margin-top: 10px; font-style: italic; }
+
+  /* ─── Learner Assessment / Synthesized Feedback (pattern-aware synthesis
+     layer added on top of the existing evidence — see buildSynthesizedAssessmentHtml
+     et al. in app.js). Reuses the same paper/lr visual language above. ─── */
+  .lr-profile-summary { font-size: 14px; line-height: 1.65; color: #33454c; }
+  .lr-priority-card {
+    background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm);
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .lr-priority-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .lr-priority-num {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: 12px; font-weight: 700; font-family: var(--mono);
+  }
+  .lr-priority-title { font-size: 14px; font-weight: 700; color: #1f2d33; flex: 1; }
+  .lr-priority-pill, .lr-pattern-pill {
+    display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 2px 9px; border-radius: 999px; flex-shrink: 0;
+  }
+  .lr-priority-pill.lr-priority-high, .lr-pattern-pill.lr-pattern-recurring { background: #fbe6e5; color: #c2453f; }
+  .lr-priority-pill.lr-priority-medium, .lr-pattern-pill.lr-pattern-occasional { background: #fbf0d9; color: #b3821a; }
+  .lr-priority-pill.lr-priority-low, .lr-pattern-pill.lr-pattern-isolated { background: #eef1f5; color: #56636b; }
+  .lr-priority-row { font-size: 13px; line-height: 1.55; margin-top: 6px; }
+  .lr-priority-row .k { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #8a97a0; margin-bottom: 1px; }
+  .lr-priority-row .v { color: #33454c; }
+  table.lr-profile-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.lr-profile-table th, table.lr-profile-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e2ded3; }
+  table.lr-profile-table th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #8a97a0; font-weight: 700; }
+  table.lr-profile-table td:last-child, table.lr-profile-table th:last-child { text-align: right; }
+  .lr-plan-step { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.55; color: #33454c; margin-bottom: 8px; }
+  .lr-plan-step .num {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 20px; height: 20px; border-radius: 50%; background: #eef1f5; color: #1f2d33;
+    font-size: 11px; font-weight: 700; font-family: var(--mono); margin-top: 1px;
+  }
   .lr-debug-toggle { margin-top: 4px; }
   .lr-debug-toggle > summary {
     cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 600; color: var(--text-dim);
@@ -650,6 +693,49 @@
   .lr-debug-toggle > summary::before { content: "▶ "; }
   .lr-debug-toggle[open] > summary::before { content: "▼ "; }
   .lr-debug-toggle > div { padding-top: 8px; display: grid; gap: 16px; }
+
+  /* ─── Learner Report: light overrides for shared components ──────────────
+     .grammar-fix-card, .issue-card, .repeat-row and .adv-grammar-card were
+     built for the dark Debug Details cards (var(--bg-input) etc.) but are
+     reused as-is inside the light/paper .lr report by buildGrammarSectionHtml,
+     buildVocabularySectionHtml and buildAdvancedGrammarSectionHtml. Without
+     this block they render as dark navy boxes floating inside the cream
+     report — the actual source of the "different colors, not uniform"
+     look. These rules re-theme them to the report's existing paper palette
+     (#fff cards on #e2ded3 borders, #1a8f5e/#c2453f for good/bad) so every
+     block inside .lr reads as one consistent surface. Dark Debug Details
+     rendering of the same classes is untouched — these selectors only match
+     inside .lr. */
+  .lr .grammar-fix-card, .lr .issue-card, .lr .adv-grammar-card {
+    background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm);
+  }
+  .lr .gfc-said {
+    background: #fbe6e5; border-left: 3px solid #c2453f; color: #33454c;
+  }
+  .lr .gfc-said .tag { color: #c2453f; }
+  .lr .gfc-why { color: #56636b; }
+  .lr .gfc-correct {
+    background: #e3f5eb; border-left: 3px solid #1a8f5e; color: #33454c;
+  }
+  .lr .gfc-correct .tag { color: #1a8f5e; }
+  .lr .gfc-tip { color: #56636b; border-top-color: #e2ded3; }
+  .lr .issue-row .k { color: #8a97a0; }
+  .lr .issue-row .v-wrong { color: #c2453f; }
+  .lr .issue-row .v-correct { color: #1a8f5e; }
+  .lr .repeat-row {
+    background: #ffffff; border: 1px solid #e2ded3;
+  }
+  .lr .repeat-row .word { color: #c2453f; background: #fbe6e5; }
+  .lr .repeat-row .alt { color: #1a8f5e; background: #e3f5eb; }
+  .lr .repeat-row .freq, .lr .repeat-row .arrow { color: #8a97a0; }
+  .lr .adv-grammar-card .badge {
+    color: var(--accent); background: rgba(91, 141, 239, 0.12);
+  }
+  .lr .adv-grammar-card .quote { color: #1a8f5e; }
+  .lr .adv-grammar-card .note { color: #56636b; }
+  .lr .notice { background: #ffffff; border-color: #e2ded3; color: #56636b; }
+  .lr .notice.warn { border-color: #d9a441; background: #fbf0d9; }
+  .lr .notice.warn strong { color: #b3821a; }
 
   /* ─── Tabs ───────────────────────────────────────────────────────────── */
   .tabs {
@@ -818,7 +904,7 @@
     background: var(--accent);
     border: none;
     border-radius: var(--radius-sm);
-    color: #0b0d12;
+    color: #1f2d33;
     font-weight: 600;
     cursor: pointer;
     font-size: 13px;
@@ -870,14 +956,14 @@
     cursor: pointer;
     font-weight: 600;
   }
-  .export-btn:hover { background: var(--good); color: #0b0d12; }
+  .export-btn:hover { background: var(--good); color: #ffffff; }
 
   /* ─── Modal ──────────────────────────────────────────────────────────── */
   .modal-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.85);
+    background: rgba(31,45,51,0.45);
     z-index: 1000;
     justify-content: center;
     align-items: center;

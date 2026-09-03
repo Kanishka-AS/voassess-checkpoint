@@ -760,3 +760,104 @@ main { max-width: 960px; margin: 0 auto; padding: 28px 20px 60px; }
   .timer-text     { font-size: 1.6rem; }
   .assess-step-label { display: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LEARNER REPORT — ported verbatim from debug-ui/index.html's inline
+   <style> (the existing PDF-referenced "printed report" card used there
+   for both the live debug view and the guided-assessment modal). Kept as
+   its own self-contained light "paper" card — background/text colors
+   fixed on purpose — rather than re-themed to the dark app palette, so it
+   still reads as the same report whichever surface renders it.
+   ═══════════════════════════════════════════════════════════════════════ */
+.lr {
+  background: #f7f5f0;
+  color: #263238;
+  border-radius: var(--radius);
+  padding: 28px 30px 34px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+}
+.lr-masthead {
+  display: flex; align-items: baseline; gap: 10px; margin-bottom: 22px;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #56636b;
+}
+.lr-masthead span { font-weight: 400; text-transform: none; letter-spacing: 0; color: #8a97a0; font-size: 13px; }
+.lr-overall {
+  text-align: center; padding: 26px 20px 30px; margin-bottom: 26px;
+  border: 1px solid #dedad0; border-radius: var(--radius); background: #ffffff;
+}
+.lr-overall-kicker { font-size: 11.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #8a97a0; margin-bottom: 10px; }
+.lr-overall-score { font-size: 52px; font-weight: 800; line-height: 1; color: #1f2d33; }
+.lr-overall-score .lr-overall-max { font-size: 20px; font-weight: 500; color: #8a97a0; margin-left: 4px; }
+.lr-overall-cefr { font-size: 22px; font-weight: 700; margin-top: 10px; color: var(--accent); }
+.lr-overall-cefr-label { font-size: 13px; color: #56636b; margin-top: 2px; }
+.lr-section { padding: 22px 0; border-top: 1px solid #e2ded3; }
+.lr-section:first-of-type { border-top: none; }
+.lr-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.lr-section-head h3 { font-size: 15px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #1f2d33; margin: 0; }
+.lr-score { font-size: 22px; font-weight: 800; color: #1f2d33; font-family: 'SFMono-Regular', Consolas, monospace; }
+.lr-score.lr-good { color: #1a8f5e; }
+.lr-score.lr-ok { color: #b3821a; }
+.lr-score.lr-poor { color: #c2453f; }
+.lr-section-body { font-size: 13.5px; line-height: 1.6; color: #33454c; }
+.lr-metric-row { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-bottom: 14px; }
+.lr-metric { min-width: 120px; }
+.lr-metric .k { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #8a97a0; margin-bottom: 2px; }
+.lr-metric .v { font-size: 17px; font-weight: 700; color: #1f2d33; font-family: 'SFMono-Regular', Consolas, monospace; }
+.lr-feedback { background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 10px; }
+.lr-feedback .band {
+  display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 2px 9px; border-radius: 999px; margin-bottom: 6px;
+}
+.lr-feedback .band.band-high { background: #e3f5eb; color: #1a8f5e; }
+.lr-feedback .band.band-medium { background: #fbf0d9; color: #b3821a; }
+.lr-feedback .band.band-low { background: #fbe6e5; color: #c2453f; }
+.lr-rec {
+  display: flex; gap: 8px; font-size: 13px; color: #33454c; margin-top: 10px; padding-top: 10px;
+  border-top: 1px dashed #e2ded3; line-height: 1.55;
+}
+.lr-rec .arrow { color: var(--accent); flex-shrink: 0; font-weight: 700; }
+.lr-strength { display: flex; gap: 8px; font-size: 13px; color: #1a8f5e; margin-bottom: 6px; }
+.lr-word-chip { display: inline-block; background: #eef1f5; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-family: 'SFMono-Regular', Consolas, monospace; color: #33454c; margin: 2px 4px 2px 0; }
+.lr-dist-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12.5px; }
+.lr-dist-row .dist-label { width: 130px; flex-shrink: 0; color: #56636b; }
+.lr-dist-row .dist-bar-wrap { flex: 1; background: #eceae3; border-radius: 4px; overflow: hidden; height: 8px; }
+.lr-dist-row .dist-bar { height: 100%; background: var(--accent); border-radius: 4px; }
+.lr-dist-row .dist-pct { width: 40px; text-align: right; color: #1f2d33; font-family: 'SFMono-Regular', Consolas, monospace; }
+.lr-transcript { background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm); padding: 14px 16px; font-size: 13.5px; line-height: 1.7; color: #33454c; white-space: pre-wrap; }
+.lr-gap-note { font-size: 12px; color: #8a97a0; margin-top: 10px; font-style: italic; }
+
+/* Grammar / advanced-grammar cards used inside the Learner Report — same
+   markup/classes as debug-ui's buildGrammarSectionHtml() / grammar-fix
+   cards, ported alongside it. */
+.grammar-fix-card, .issue-card {
+  background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm);
+  padding: 12px 14px; margin-bottom: 10px; font-size: 13px; line-height: 1.55;
+}
+.gfc-said { color: #c2453f; margin-bottom: 6px; }
+.gfc-why { color: #33454c; margin-bottom: 6px; }
+.gfc-correct { color: #1a8f5e; margin-bottom: 6px; }
+.gfc-tip { color: #56636b; display: flex; gap: 6px; }
+.grammar-fix-card .tag, .issue-card .k {
+  display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: #8a97a0; margin-right: 6px;
+}
+.issue-row { margin-bottom: 4px; }
+.issue-row .v-wrong { color: #c2453f; }
+.issue-row .v-correct { color: #1a8f5e; }
+.adv-grammar-card {
+  background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm);
+  padding: 12px 14px; margin-bottom: 10px; font-size: 13px;
+}
+.adv-grammar-card .badge {
+  display: inline-block; background: var(--faint); color: var(--accent); font-weight: 700;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 9px;
+  border-radius: 999px; margin-bottom: 6px;
+}
+.adv-grammar-card .quote { color: #1f2d33; font-style: italic; margin-bottom: 4px; }
+.adv-grammar-card .note { color: #56636b; }
+.repeat-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin-bottom: 4px; flex-wrap: wrap; }
+.repeat-row .word { font-weight: 700; color: #1f2d33; }
+.repeat-row .freq { color: #8a97a0; }
+.repeat-row .arrow { color: var(--accent); }
+.repeat-row .alt { background: #eef1f5; border-radius: 999px; padding: 1px 8px; color: #33454c; }

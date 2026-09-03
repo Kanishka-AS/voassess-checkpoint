@@ -46,6 +46,283 @@
   }
   function cls(s) { return s >= 80 ? 'good' : s >= 60 ? 'ok' : 'poor'; }
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     LEARNER REPORT — ported verbatim (same functions, same markup/classes)
+     from debug-ui/app.js's buildLearnerReportHtml() and its section
+     builders. That is the one existing, already-built, PDF-referenced
+     renderer that combines the deterministic scores with the real Groq
+     teacher_report — used there for both the live debug view and the
+     guided-assessment modal. Reusing it here (instead of a second,
+     divergent implementation) is what actually shows "scores + Groq
+     feedback" the way the sample output does. Nothing here computes a
+     score or invents copy — every value is read straight off the `final`
+     stage object (score_free_speech() output) plus its attached
+     teacher_report, exactly as debug-ui does. See style.css's `.lr-*`
+     rules (ported alongside, from debug-ui/index.html's inline styles)
+     for the visual "printed report" card these render into.
+  ═══════════════════════════════════════════════════════════════════════ */
+  const esc = escHtml; // alias — ported code calls esc(), this file calls escHtml()
+
+  const CEFR_LEVEL_NAMES = {
+    A1: "Beginner", A2: "Elementary", B1: "Intermediate",
+    B2: "Upper-Intermediate", C1: "Advanced", C2: "Proficiency",
+  };
+
+  function lrBandClass(band) {
+    const b = (band || "").toLowerCase();
+    return b === "high" ? "band-high" : b === "low" ? "band-low" : "band-medium";
+  }
+
+  function lrScoreClass(score) {
+    if (score === undefined || score === null) return "";
+    if (score >= 75) return "lr-good";
+    if (score >= 50) return "lr-ok";
+    return "lr-poor";
+  }
+
+  function lrSection(title, score, bodyHtml) {
+    if (!bodyHtml) return "";
+    return `<div class="lr-section">
+      <div class="lr-section-head">
+        <h3>${esc(title)}</h3>
+        ${score !== undefined && score !== null ? `<div class="lr-score ${lrScoreClass(score)}">${esc(Math.round(score))}</div>` : ""}
+      </div>
+      <div class="lr-section-body">${bodyHtml}</div>
+    </div>`;
+  }
+
+  function lrMetric(label, value) {
+    if (value === undefined || value === null) return "";
+    return `<div class="lr-metric"><span class="k">${esc(label)}</span><span class="v">${esc(value)}</span></div>`;
+  }
+
+  function lrFeedbackBlock(band, text) {
+    if (!text) return "";
+    return `<div class="lr-feedback">
+      ${band ? `<span class="band ${lrBandClass(band)}">${esc(band)}</span>` : ""}
+      <div>${esc(text)}</div>
+    </div>`;
+  }
+
+  function lrRecommendation(text) {
+    if (!text) return "";
+    return `<div class="lr-rec"><span class="arrow">→</span><span>${esc(text)}</span></div>`;
+  }
+
+  function buildOverallResultHtml(data) {
+    if (data.overall === undefined && !data.cefr) return "";
+    const cefr = data.cefr || {};
+    const levelName = CEFR_LEVEL_NAMES[cefr.level] || "";
+    return `<div class="lr-overall">
+      <div class="lr-overall-kicker">Your Overall Result</div>
+      <div class="lr-overall-score">${data.overall !== undefined ? esc(Math.round(data.overall)) : "—"}<span class="lr-overall-max">/100</span></div>
+      ${cefr.level ? `<div class="lr-overall-cefr">${esc(cefr.level)}</div>` : ""}
+      ${levelName ? `<div class="lr-overall-cefr-label">${esc(levelName)}</div>` : ""}
+    </div>`;
+  }
+
+  function buildGrammarSectionHtml(data, tr) {
+    const g = data.grammar;
+    if (!g) return "";
+    const growth = (tr && tr.growth_areas) || {};
+    const breakdown = Array.isArray(growth.grammar_breakdown) ? growth.grammar_breakdown : [];
+    const accuracy = tr && tr.performance_summary && tr.performance_summary.accuracy;
+
+    let evidenceHtml = "";
+    if (breakdown.length) {
+      evidenceHtml = breakdown.map(item => `
+        <div class="grammar-fix-card">
+          ${item.you_said ? `<div class="gfc-said"><span class="tag">You said</span>${esc(item.you_said)}</div>` : ""}
+          ${item.what_went_wrong || item.why_its_wrong ? `<div class="gfc-why">${[item.what_went_wrong, item.why_its_wrong].filter(Boolean).map(esc).join(" ")}</div>` : ""}
+          ${item.correct_version ? `<div class="gfc-correct"><span class="tag">Say instead</span>${esc(item.correct_version)}</div>` : ""}
+          ${item.how_to_avoid_next_time ? `<div class="gfc-tip"><span class="icon">💡</span><span>${esc(item.how_to_avoid_next_time)}</span></div>` : ""}
+        </div>`).join("");
+    } else if (Array.isArray(g.issues) && g.issues.length) {
+      evidenceHtml = g.issues.map(iss => `
+        <div class="issue-card">
+          ${iss.wrong !== undefined ? `<div class="issue-row"><span class="k">Wrong:</span><span class="v-wrong">${esc(iss.wrong)}</span></div>` : ""}
+          ${iss.correct !== undefined ? `<div class="issue-row"><span class="k">Correct:</span><span class="v-correct">${esc(iss.correct)}</span></div>` : ""}
+          ${iss.learner_explanation ? `<div class="issue-row"><span class="k">Why:</span><span>${esc(iss.learner_explanation)}</span></div>` : ""}
+        </div>`).join("");
+    } else if (g.errors === 0 || growth.grammar_breakdown) {
+      evidenceHtml = `<div class="lr-strength"><span>✓</span><span>${esc((tr && tr.overview && tr.overview.grammar_accuracy_summary) || "No grammar errors detected.")}</span></div>`;
+    }
+
+    const body = `
+      <div class="lr-metric-row">
+        ${lrMetric("Errors", g.errors)}
+      </div>
+      ${evidenceHtml}
+      ${accuracy ? lrFeedbackBlock(accuracy.band, accuracy.teacher_explanation) : ""}
+    `;
+    return lrSection("Grammar", g.score, body);
+  }
+
+  function buildVocabularySectionHtml(data, tr) {
+    const v = data.vocabulary;
+    if (!v) return "";
+    const trVocab = (tr && tr.vocabulary) || {};
+    const repetitions = Array.isArray(tr && tr.repetitions) ? tr.repetitions : [];
+    const overview = (tr && tr.overview) || {};
+
+    const distribution = trVocab.vocabulary_distribution_by_level;
+    let distHtml = "";
+    if (distribution && typeof distribution === "object") {
+      distHtml = `<div style="margin:12px 0;">` + Object.entries(distribution).map(([level, pct]) => `
+        <div class="lr-dist-row">
+          <span class="dist-label">${esc(level)}</span>
+          <span class="dist-bar-wrap"><span class="dist-bar" style="width:${Math.max(0, Math.min(100, Number(pct) || 0))}%"></span></span>
+          <span class="dist-pct">${esc(pct)}%</span>
+        </div>`).join("") + `</div>`;
+    }
+
+    let wordsHtml = "";
+    if (Array.isArray(trVocab.useful_higher_level_words_used) && trVocab.useful_higher_level_words_used.length) {
+      wordsHtml = `<div style="margin-bottom:10px;">${trVocab.useful_higher_level_words_used.map(w => `<span class="lr-word-chip">${esc(w)}</span>`).join("")}</div>`;
+    }
+
+    let repsHtml = "";
+    if (repetitions.length) {
+      repsHtml = `<div style="margin-top:10px;"><strong style="font-size:12px;color:#8a97a0;text-transform:uppercase;letter-spacing:.04em;">Word repetitions</strong>` +
+        repetitions.map(r => `<div class="repeat-row">
+          <span class="word">${esc(r.word_or_phrase)}</span><span class="freq">used ${esc(r.frequency)}×</span>
+          ${Array.isArray(r.better_alternatives) && r.better_alternatives.length ? `<span class="arrow">→</span>${r.better_alternatives.map(a => `<span class="alt">${esc(a)}</span>`).join("")}` : ""}
+        </div>`).join("") + `</div>`;
+    }
+
+    const body = `
+      <div class="lr-metric-row">
+        ${lrMetric("Active vocabulary", trVocab.active_vocabulary_size ?? v.unique_words)}
+        ${lrMetric("Vocabulary level", trVocab.cefr_level || (data.cefr && data.cefr.level))}
+        ${lrMetric("Unique words", v.unique_words)}
+        ${lrMetric("Total words", v.total_words)}
+      </div>
+      ${distHtml}
+      ${wordsHtml}
+      ${trVocab.active_vocabulary_note ? `<div class="lr-feedback">${esc(trVocab.active_vocabulary_note)}</div>` : (overview.strong_vocabulary_observations ? `<div class="lr-feedback">${esc(overview.strong_vocabulary_observations)}</div>` : "")}
+      ${repsHtml}
+      ${lrRecommendation(trVocab.suggestions_for_improving_vocabulary || (tr && tr.growth_areas && tr.growth_areas.vocabulary_improvements))}
+    `;
+    return lrSection("Vocabulary", v.score, body);
+  }
+
+  function buildPacingSectionHtml(data) {
+    const pace = data.pace;
+    if (!pace) return "";
+    const body = `
+      <div class="lr-metric-row">
+        ${lrMetric("Speaking rate (WPM)", pace.wpm)}
+      </div>
+    `;
+    return lrSection("Pacing", pace.score, body);
+  }
+
+  function buildFluencySectionHtml(data, tr) {
+    const fluency = data.fluency;
+    if (!fluency) return "";
+    const perf = tr && tr.performance_summary && tr.performance_summary.fluency;
+    const body = `
+      <div class="lr-metric-row">
+        ${lrMetric("Hesitations", fluency.hesitation_count)}
+        ${lrMetric("Unexpected pauses", fluency.long_pause_count)}
+        ${lrMetric("Pause rate / min", fluency.pause_rate_per_min)}
+      </div>
+      ${fluency.pause_data_available === false ? `<div class="lr-gap-note">Pause detection wasn't available for this STT provider — this score falls back to the filler/hesitation signal alone.</div>` : ""}
+      ${perf ? lrFeedbackBlock(perf.band, perf.teacher_explanation) : ""}
+    `;
+    return lrSection("Fluency", fluency.score, body);
+  }
+
+  function buildFillerSectionHtml(data, tr) {
+    const filler = data.filler;
+    if (!filler) return "";
+    const growth = (tr && tr.growth_areas) || {};
+    const f = growth.fillers;
+
+    let feedbackHtml = "";
+    if (f && typeof f === "object" && f.summary) {
+      feedbackHtml = `<div class="lr-feedback">
+        <div>${esc(f.summary)}</div>
+        ${f.why_it_matters ? `<div style="margin-top:6px;color:#56636b;">${esc(f.why_it_matters)}</div>` : ""}
+      </div>
+      ${Array.isArray(f.how_to_reduce) && f.how_to_reduce.length ? f.how_to_reduce.map(t => lrRecommendation(t)).join("") : ""}`;
+    } else if (typeof f === "string" && f) {
+      feedbackHtml = `<div class="lr-feedback">${esc(f)}</div>`;
+    }
+
+    const body = `
+      <div class="lr-metric-row">
+        ${lrMetric("Filler count", filler.count)}
+        ${lrMetric("Rate / min", filler.rate_per_min)}
+      </div>
+      ${Array.isArray(filler.words) && filler.words.length ? `<div style="margin-bottom:10px;">${filler.words.map(w => `<span class="lr-word-chip">${esc(w)}</span>`).join("")}</div>` : ""}
+      ${feedbackHtml}
+    `;
+    return lrSection("Filler Words", filler.score, body);
+  }
+
+  function buildPronunciationSectionHtml(data, tr) {
+    const p = data.pronunciation;
+    if (!p) return "";
+    const useOfEnglish = tr && tr.performance_summary && tr.performance_summary.use_of_english;
+
+    let issuesHtml = "";
+    if (Array.isArray(p.issues) && p.issues.length) {
+      issuesHtml = `<div style="margin-bottom:10px;">${p.issues.map(i => `<span class="lr-word-chip">${esc(i.word)} · ${esc(i.confidence)}%</span>`).join("")}</div>`;
+    }
+
+    const availabilityNote = p.available === false
+      ? `<div class="lr-gap-note">Pronunciation provider (${esc(p.requested_provider || "requested provider")}) was unavailable for this run — score falls back per backend logic.</div>`
+      : "";
+
+    const body = `
+      ${issuesHtml}
+      ${useOfEnglish ? lrFeedbackBlock(useOfEnglish.band, useOfEnglish.teacher_explanation) : ""}
+      ${availabilityNote}
+    `;
+    return lrSection("Pronunciation", p.score, body);
+  }
+
+  function buildAdvancedGrammarSectionHtml(tr) {
+    const list = Array.isArray(tr && tr.advanced_grammar_used) ? tr.advanced_grammar_used : [];
+    if (!list.length) return "";
+    const body = list.map(a => `
+      <div class="adv-grammar-card">
+        <span class="badge">${esc(a.construction)}</span>
+        <div class="quote">"${esc(a.quoted_example)}"</div>
+        ${a.note ? `<div class="note">${esc(a.note)}</div>` : ""}
+      </div>`).join("");
+    return `<div class="lr-section">
+      <div class="lr-section-head"><h3>Advanced Grammar</h3></div>
+      <div class="lr-section-body">${body}</div>
+    </div>`;
+  }
+
+  function buildTranscriptSectionHtml(data) {
+    if (data.transcript === undefined) return "";
+    return `<div class="lr-section">
+      <div class="lr-section-head"><h3>Transcript</h3></div>
+      <div class="lr-section-body"><div class="lr-transcript">${esc(data.transcript) || "<em>(empty)</em>"}</div></div>
+    </div>`;
+  }
+
+  function buildLearnerReportHtml(data) {
+    const tr = data.teacher_report || null;
+    return `
+      <div class="lr-masthead">${escHtml(document.title || 'Talking Labs')} <span>Assessment Report</span></div>
+      ${buildOverallResultHtml(data)}
+      ${buildGrammarSectionHtml(data, tr)}
+      ${buildVocabularySectionHtml(data, tr)}
+      ${buildPacingSectionHtml(data)}
+      ${buildFluencySectionHtml(data, tr)}
+      ${buildFillerSectionHtml(data, tr)}
+      ${buildPronunciationSectionHtml(data, tr)}
+      ${buildAdvancedGrammarSectionHtml(tr)}
+      ${buildTranscriptSectionHtml(data)}
+      ${!tr ? `<div class="notice warn" style="margin-top:8px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,.12);color:#b3821a;font-size:12.5px;">AI-generated narrative feedback (Groq teacher report) wasn't available for this run${data.teacher_report_detail ? ": " + esc(data.teacher_report_detail) : "."} Scores and metrics above are still the real backend values — only the feedback/recommendation text is missing.</div>` : ""}
+    `;
+  }
+
   async function postStage(stageType, stageId, blob, duration) {
     const fd = new FormData();
     fd.append('stage_type', stageType);
@@ -423,6 +700,8 @@
           <div class="metric-card"><div class="metric-header"><span class="metric-icon">🎧</span><span class="metric-name">Listen &amp; Repeat</span><span class="metric-score ${cls(sec.media_repeat.score)}">${sec.media_repeat.score != null ? Math.round(sec.media_repeat.score) : '—'}</span></div><p class="metric-detail">Listening-repeat accuracy across ${sec.media_repeat.items.length} clips</p></div>
           <div class="metric-card"><div class="metric-header"><span class="metric-icon">💬</span><span class="metric-name">Describe &amp; Compare</span><span class="metric-score ${cls(sec.picture_describe.score)}">${sec.picture_describe.score != null ? Math.round(sec.picture_describe.score) : '—'}</span></div><p class="metric-detail">Free-speech average across ${sec.picture_describe.items.length} prompts</p></div>
         </div>
+
+        <div class="lr">${buildLearnerReportHtml({...f, teacher_report: report.teacher_report, teacher_report_detail: report.teacher_report_detail})}</div>
 
         <div class="text-card">
           <div class="text-card-header"><h3>Final Assessment Transcript</h3></div>

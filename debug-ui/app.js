@@ -1396,11 +1396,231 @@ function buildTranscriptSectionHtml(data) {
   </div>`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Learner Assessment / Synthesized Feedback — pattern-aware synthesis layer.
+//
+// This is a presentation layer only: it groups/ranks/reuses evidence that
+// already exists in `data` (grammar.issues, incl. their real `category`
+// field from grammar_heuristics.py/grammar_pos_rules.py/languagetool_provider.py)
+// and `data.teacher_report` (the existing Groq report). It never calls a new
+// API, never computes a score, and never invents an error, quote, or
+// recommendation — every string surfaced here is read verbatim from
+// grammar_breakdown / growth_areas / vocabulary / performance_summary, the
+// same fields the per-metric sections below already render. Categories,
+// frequency counts, and priority tiers are the only things computed here,
+// and that computation is a plain count/group-by over real evidence.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Groups this response's grammar.issues by their real `category` field
+// (e.g. "Preposition", "Subject-Verb Agreement", "Article") and aligns each
+// issue, by index, with its corresponding grammar_breakdown entry — the
+// backend guarantees grammar_breakdown has exactly one entry per issue, in
+// the same order (see groq_provider.py's prompt rules), so this alignment
+// never mismatches an explanation to the wrong issue.
+function analyzeGrammarPatterns(data, tr) {
+  const issues = Array.isArray(data.grammar && data.grammar.issues) ? data.grammar.issues : [];
+  if (!issues.length) return [];
+  const breakdown = Array.isArray(tr && tr.growth_areas && tr.growth_areas.grammar_breakdown)
+    ? tr.growth_areas.grammar_breakdown : [];
+
+  const byCategory = new Map();
+  issues.forEach((iss, idx) => {
+    const cat = (iss.category || "Other").trim();
+    if (!byCategory.has(cat)) byCategory.set(cat, { category: cat, count: 0, examples: [], breakdownEntries: [] });
+    const entry = byCategory.get(cat);
+    entry.count += 1;
+    entry.examples.push(iss);
+    if (breakdown[idx]) entry.breakdownEntries.push(breakdown[idx]);
+  });
+
+  // Frequency → pattern/priority, per the same tiers the spec's own example
+  // table uses: 1 occurrence = Isolated/Low, 2 = Occasional/Medium, 3+ = Recurring/High.
+  return Array.from(byCategory.values()).map(e => {
+    let pattern, priority;
+    if (e.count >= 3) { pattern = "Recurring"; priority = "High"; }
+    else if (e.count === 2) { pattern = "Occasional"; priority = "Medium"; }
+    else { pattern = "Isolated"; priority = "Low"; }
+    return { ...e, pattern, priority };
+  }).sort((a, b) => b.count - a.count);
+}
+
+function buildGrammarProfileTableHtml(categories) {
+  if (!categories.length) return "";
+  const rows = categories.map(c => `
+    <tr>
+      <td>${esc(c.category)}</td>
+      <td><span class="lr-pattern-pill lr-pattern-${esc(c.pattern.toLowerCase())}">${esc(c.pattern)}</span></td>
+      <td>${c.count}</td>
+      <td><span class="lr-priority-pill lr-priority-${esc(c.priority.toLowerCase())}">${esc(c.priority)}</span></td>
+    </tr>`).join("");
+  return `<div class="lr-section">
+    <div class="lr-section-head"><h3>Grammar Profile</h3></div>
+    <div class="lr-section-body">
+      <table class="lr-profile-table">
+        <thead><tr><th>Category</th><th>Pattern</th><th>Frequency</th><th>Priority</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// Builds the 3-5 prioritized "what to work on" list, blending grammar
+// categories (ranked by real frequency) with fluency/vocabulary/pronunciation
+// signals — but ONLY when the underlying evidence for that signal actually
+// indicates a problem (non-zero filler count with a real teacher_report
+// summary, actual repeated words with a real suggestion, actual low-confidence
+// pronunciation words alongside a non-High use-of-English band). Nothing here
+// is shown without a concrete evidence field backing it.
+function collectPriorityAreas(data, tr, grammarCategories) {
+  const areas = [];
+
+  const grammarCandidates = grammarCategories.filter(c => c.pattern !== "Isolated");
+  const grammarPool = grammarCandidates.length ? grammarCandidates : grammarCategories;
+  grammarPool.forEach(c => {
+    const bd = c.breakdownEntries[0] || {};
+    const raw = c.examples[0] || {};
+    areas.push({
+      title: c.category,
+      priority: c.priority,
+      count: c.count,
+      evidence: bd.you_said || (raw.wrong !== undefined ? `"${raw.wrong}"` : null),
+      why: bd.why_its_wrong || bd.what_went_wrong || raw.learner_explanation || null,
+      practice: bd.how_to_avoid_next_time || null,
+    });
+  });
+
+  const growth = (tr && tr.growth_areas) || {};
+  const f = growth.fillers;
+  const filler = data.filler;
+  if (filler && filler.count > 0 && f && typeof f === "object" && f.summary) {
+    areas.push({
+      title: "Filler words",
+      priority: (filler.rate_per_min || 0) >= 6 ? "High" : "Medium",
+      count: filler.count,
+      evidence: `Used ${filler.count} filler word${filler.count === 1 ? "" : "s"}${filler.rate_per_min ? ` (${filler.rate_per_min}/min)` : ""}.`,
+      why: f.why_it_matters || null,
+      practice: Array.isArray(f.how_to_reduce) && f.how_to_reduce.length ? f.how_to_reduce[0] : null,
+    });
+  }
+
+  const trVocab = (tr && tr.vocabulary) || {};
+  const reps = Array.isArray(tr && tr.repetitions) ? tr.repetitions : [];
+  if (reps.length && trVocab.suggestions_for_improving_vocabulary) {
+    areas.push({
+      title: "Vocabulary variety",
+      priority: reps.length >= 3 ? "High" : "Medium",
+      count: reps.length,
+      evidence: `Repeated word${reps.length === 1 ? "" : "s"}: ${reps.slice(0, 3).map(r => r.word_or_phrase).join(", ")}.`,
+      why: trVocab.active_vocabulary_note || null,
+      practice: trVocab.suggestions_for_improving_vocabulary,
+    });
+  }
+
+  const p = data.pronunciation;
+  const useOfEnglish = tr && tr.performance_summary && tr.performance_summary.use_of_english;
+  if (p && Array.isArray(p.issues) && p.issues.length && useOfEnglish && (useOfEnglish.band || "").toLowerCase() !== "high") {
+    areas.push({
+      title: "Pronunciation clarity",
+      priority: useOfEnglish.band || "Medium",
+      count: p.issues.length,
+      evidence: `Lower-confidence words: ${p.issues.slice(0, 3).map(i => i.word).join(", ")}.`,
+      why: useOfEnglish.teacher_explanation || null,
+      practice: null,
+    });
+  }
+
+  const rank = { High: 0, Medium: 1, Low: 2 };
+  areas.sort((a, b) => (rank[a.priority] ?? 1) - (rank[b.priority] ?? 1) || (b.count || 0) - (a.count || 0));
+  return areas.slice(0, 5);
+}
+
+function buildPriorityAreasHtml(areas) {
+  if (!areas.length) return "";
+  const cards = areas.map((a, i) => `
+    <div class="lr-priority-card">
+      <div class="lr-priority-head">
+        <span class="lr-priority-num">${i + 1}</span>
+        <span class="lr-priority-title">${esc(a.title)}</span>
+        ${a.priority ? `<span class="lr-priority-pill lr-priority-${esc(String(a.priority).toLowerCase())}">${esc(a.priority)}</span>` : ""}
+      </div>
+      ${a.evidence ? `<div class="lr-priority-row"><span class="k">Evidence</span><span class="v">${esc(a.evidence)}</span></div>` : ""}
+      ${a.why ? `<div class="lr-priority-row"><span class="k">Why it matters</span><span class="v">${esc(a.why)}</span></div>` : ""}
+      ${a.practice ? `<div class="lr-priority-row"><span class="k">Practice</span><span class="v">${esc(a.practice)}</span></div>` : ""}
+    </div>`).join("");
+  return `<div class="lr-section">
+    <div class="lr-section-head"><h3>Priority Areas for Improvement</h3></div>
+    <div class="lr-section-body">${cards}</div>
+  </div>`;
+}
+
+// Strengths: only ever built from a High performance_summary band, a real
+// overview observation string, or a real advanced_grammar_used entry — never
+// generic praise. Returns [] (→ no section rendered) when none of those exist.
+function collectStrengths(tr) {
+  const strengths = [];
+  const perf = (tr && tr.performance_summary) || {};
+  const perfLabels = { accuracy: "Grammar accuracy", fluency: "Fluency", use_of_english: "Pronunciation" };
+  Object.entries(perfLabels).forEach(([key, label]) => {
+    const p = perf[key];
+    if (p && (p.band || "").toLowerCase() === "high") {
+      strengths.push(p.teacher_explanation ? `${label}: ${p.teacher_explanation}` : `Strong ${label.toLowerCase()}.`);
+    }
+  });
+  const overview = (tr && tr.overview) || {};
+  if (overview.strong_vocabulary_observations) strengths.push(overview.strong_vocabulary_observations);
+  if (overview.strong_language_use_observations) strengths.push(overview.strong_language_use_observations);
+  const adv = Array.isArray(tr && tr.advanced_grammar_used) ? tr.advanced_grammar_used : [];
+  if (adv.length) {
+    strengths.push(`Uses ${adv.length > 1 ? "advanced grammar constructions correctly" : "an advanced grammar construction correctly"} (e.g. ${adv[0].construction}: "${adv[0].quoted_example}").`);
+  }
+  return strengths;
+}
+
+function buildStrengthsHtml(strengths) {
+  if (!strengths.length) return "";
+  return `<div class="lr-section">
+    <div class="lr-section-head"><h3>Strengths</h3></div>
+    <div class="lr-section-body">${strengths.map(s => `<div class="lr-strength"><span>✓</span><span>${esc(s)}</span></div>`).join("")}</div>
+  </div>`;
+}
+
+// Reuses the existing overview.overall_assessment narrative verbatim (the
+// backend's own teacher-style summary) rather than generating a new one
+// client-side — per spec, this must be "generated from the actual evidence",
+// and that sentence already is.
+function buildLearnerProfileSummaryHtml(tr) {
+  const overview = (tr && tr.overview) || {};
+  if (!overview.overall_assessment) return "";
+  return `<div class="lr-section">
+    <div class="lr-section-head"><h3>Overall Learner Profile</h3></div>
+    <div class="lr-section-body"><div class="lr-profile-summary">${esc(overview.overall_assessment)}</div></div>
+  </div>`;
+}
+
+// Final actionable plan — one line per priority area, reusing that area's
+// own `practice` text (already sourced from real evidence above). No new
+// text is generated here; areas without a practice tip are simply skipped.
+function buildLearningPlanHtml(areas) {
+  const steps = areas.filter(a => a.practice).map(a => ({ title: a.title, practice: a.practice }));
+  if (!steps.length) return "";
+  return `<div class="lr-section">
+    <div class="lr-section-head"><h3>Recommended Practice Priorities</h3></div>
+    <div class="lr-section-body">${steps.map((s, i) => `<div class="lr-plan-step"><span class="num">${i + 1}</span><span><strong>${esc(s.title)}.</strong> ${esc(s.practice)}</span></div>`).join("")}</div>
+  </div>`;
+}
+
 function buildLearnerReportHtml(data) {
   const tr = data.teacher_report || null;
+  const grammarCategories = analyzeGrammarPatterns(data, tr);
+  const priorityAreas = collectPriorityAreas(data, tr, grammarCategories);
+  const strengths = collectStrengths(tr);
   return `
     <div class="lr-masthead">VoiceCoach <span>Assessment Report</span></div>
     ${buildOverallResultHtml(data)}
+    ${buildLearnerProfileSummaryHtml(tr)}
+    ${buildStrengthsHtml(strengths)}
+    ${buildPriorityAreasHtml(priorityAreas)}
+    ${buildGrammarProfileTableHtml(grammarCategories)}
     ${buildGrammarSectionHtml(data, tr)}
     ${buildVocabularySectionHtml(data, tr)}
     ${buildPacingSectionHtml(data)}
@@ -1408,6 +1628,7 @@ function buildLearnerReportHtml(data) {
     ${buildFillerSectionHtml(data, tr)}
     ${buildPronunciationSectionHtml(data, tr)}
     ${buildAdvancedGrammarSectionHtml(tr)}
+    ${buildLearningPlanHtml(priorityAreas)}
     ${buildTranscriptSectionHtml(data)}
     ${!tr ? `<div class="notice warn" style="margin-top:8px;">AI-generated narrative feedback (Groq teacher report) wasn't available for this run${data.teacher_report_detail ? ": " + esc(data.teacher_report_detail) : "."} Scores and metrics above are still the real backend values — only the feedback/recommendation text is missing.</div>` : ""}
   `;

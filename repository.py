@@ -228,7 +228,9 @@ def save_english_assessment(
     cefr_level: str,
     archetype: str,
     stages: List[Dict[str, Any]],
-    user_id: str
+    user_id: str,
+    teacher_report: Optional[Dict[str, Any]] = None,
+    teacher_report_detail: Optional[str] = None,
 ) -> int:
     """
     Save a guided English assessment result to the database.
@@ -247,6 +249,11 @@ def save_english_assessment(
         archetype: Voice archetype label
         stages: List of all stage results
         user_id: The user's ID
+        teacher_report: Optional Groq teacher-report dict (see groq_provider.
+            generate_teacher_report()) — additive, may be None if the report
+            wasn't generated (e.g. GROQ_API_KEY unset or the request failed).
+        teacher_report_detail: Optional explanation of why teacher_report is
+            None, for debugging — never shown to the candidate as an error.
     
     Returns:
         The ID of the newly inserted row
@@ -267,6 +274,9 @@ def save_english_assessment(
             },
             "final": final_stage,
             "stages": stages,
+            # Additive — never fabricated: null when Groq didn't run/failed.
+            "teacher_report": teacher_report,
+            "teacher_report_detail": teacher_report_detail,
         }
         full_result_json = _json_dumps(full_result)
         
@@ -593,6 +603,7 @@ def get_english_assessment_parameters(assessment_id: int, user_id: str) -> Optio
         'pronunciation': final.get('pronunciation'),
         'grammar': final.get('grammar'),
         'clarity': final.get('clarity'),
+        'teacher_report': full.get('teacher_report'),
         'fluency': final.get('fluency'),
         'vocabulary': full.get('vocabulary'),
         'cefr': full.get('cefr'),
