@@ -281,6 +281,16 @@ def build_report_evidence(transcript: str, transcript_with_fillers: Optional[str
             "error_count": evidence.get("grammar", {}).get("errors"),
             "issues": evidence.get("grammar", {}).get("issues"),
             "source": evidence.get("grammar_source"),
+            # Read-only pass-through of grammar_context_validator.py's own
+            # context_notes (candidates it saw but did NOT classify as
+            # true_grammar_error — spoken repetitions/self-corrections,
+            # informal contractions, written-only conventions). Given to
+            # Groq so it can ground a "why this wasn't counted as an error"
+            # remark in real evidence instead of staying silent or, worse,
+            # inventing one. Never used as a source of scoring evidence —
+            # only `issues` above (the validated true_grammar_error list)
+            # counts toward the grammar score / error count.
+            "non_scoring_notes": evidence.get("grammar_context", {}).get("context_notes", []),
         },
         "pronunciation": {
             "score": evidence.get("pronunciation", {}).get("score"),
@@ -317,25 +327,37 @@ before or after) matching exactly this shape:
 {
   "overview": {
     "overall_assessment": "2-4 sentences, teacher voice",
-    "grammar_accuracy_summary": "grounded in grammar evidence given",
+    "grammar_accuracy_summary": "grounded in grammar evidence given — if grammar.issues is empty, do NOT say there were errors or reference any count/system/validation process; write a short, natural remark instead (see rules below)",
     "advanced_grammar_constructions_detected": "prose summary, or 'None clearly evidenced in this sample.' if none",
     "complex_sentence_usage": "grounded in avg sentence length / transcript, or 'Not clearly measurable from this sample.'",
     "strong_vocabulary_observations": "grounded in vocabulary evidence",
     "strong_language_use_observations": "grounded in transcript/evidence"
   },
   "growth_areas": {
-    "repeated_overused_words": "reference the actual repeated_words list given, or 'No significant repetition detected.'",
-    "fillers": "reference the actual filler words/count given, or 'No significant filler use detected.'",
-    "linking_word_suggestions": "concrete, e.g. suggest 'however', 'in addition' etc. where it would help THIS transcript",
-    "grammar_issues": "reference the actual grammar issues given, or 'No grammar issues detected.'",
-    "vocabulary_improvements": "concrete suggestions",
+    "repeated_overused_words": "1-2 sentence summary referencing the actual repeated_words list given (see also the separate 'repetitions' array below for the per-word breakdown), or 'No significant repetition detected.' if that list is empty",
+    "fillers": {
+      "summary": "1-2 sentences stating how many filler instances were detected (use filler.count / filler.rate_per_min given) and, if useful, whether they cluster together or spread through the sample — or 'No significant filler use detected.' if filler.count is 0",
+      "why_it_matters": "1-2 sentences on the concrete effect THIS MANY fillers has on how the speaker comes across (e.g. breaks up the listener's attention, makes the delivery sound less confident) — grounded only in the count/rate given; empty string if filler.count is 0",
+      "how_to_reduce": ["2-4 short, specific, practical techniques for reducing filler words (e.g. pausing silently instead of filling the gap, slowing down before a tricky word, rehearsing the sentence once before speaking) — empty list if filler.count is 0"]
+    },
+    "linking_word_suggestions": "ONLY suggest a specific linking word if a genuinely awkward or missing transition actually exists in THIS transcript and the suggested word would sound natural in the student's own sentence — otherwise return an empty string. Never suggest a linking word just to fill this field, and never default to generic examples like 'however'/'moreover'/'therefore' unless one of them is genuinely the natural fit here.",
+    "grammar_breakdown": [
+      {
+        "you_said": "a verbatim quote pulled from that issue's own context field, long enough to show where the mistake sits (do not paraphrase the quote)",
+        "what_went_wrong": "one plain-language sentence naming exactly what was wrong (which word/tense/form)",
+        "why_its_wrong": "1-2 sentences explaining the grammar rule being broken, referencing the surrounding context (e.g. an earlier time marker) when it explains WHY the rule applies here",
+        "correct_version": "the corrected sentence or clause, written out in full, ready for the student to say",
+        "how_to_avoid_next_time": "one concrete, memorable tip tied to this specific rule — not generic 'practice more' advice"
+      }
+    ],
+    "vocabulary_improvements": "ONLY suggest a word swap that would sound natural coming out of THIS student's mouth in THIS sentence — never force an unnatural, overly formal synonym swap (e.g. 'wanted' -> 'desired'). If there's nothing genuine to suggest, say so plainly (e.g. 'No specific vocabulary changes needed for this response.') instead of inventing one.",
     "fluency_pacing_improvements": "grounded in the fluency/pace evidence given",
     "other_weaknesses": "any other genuine, evidence-grounded observation, or 'None noted.'"
   },
   "vocabulary": {
     "active_vocabulary_note": "1-2 sentences using the unique_words/total_words/CEFR values given",
     "useful_higher_level_words_used": ["actual words pulled from the transcript that are genuinely higher-level; empty list if none"],
-    "suggestions_for_improving_vocabulary": "concrete suggestions"
+    "suggestions_for_improving_vocabulary": "same conservatism as vocabulary_improvements above — only a genuinely natural-sounding suggestion, or a plain statement that none is needed"
   },
   "repetitions": [
     {"word_or_phrase": "...", "frequency": <int, from repeated_words given>, "better_alternatives": ["...", "..."]}
@@ -343,7 +365,7 @@ before or after) matching exactly this shape:
   "advanced_grammar_used": [
     {"construction": "e.g. Reported speech / Relative clause / Passive voice / Conditional / Modal / Phrasal verb / Intensifier / a specific tense",
      "quoted_example": "the EXACT phrase from the transcript that shows it",
-     "note": "brief teacher note"}
+     "note": "brief teacher note explaining simply why this is a genuinely good, correctly-used construction"}
   ],
   "performance_summary_elaboration": {
     "accuracy_extra": "1-2 teacher-style sentences ADDING to (not replacing) the fixed rubric sentence, grounded in the grammar evidence",
@@ -353,10 +375,17 @@ before or after) matching exactly this shape:
 }
 
 Rules:
-- "repetitions" MUST be built only from the repeated_words array given (same words, same counts) — do not add words not in that list, and if that list is empty return an empty "repetitions" array.
+- "grammar_breakdown" MUST contain exactly one entry for every issue in the grammar.issues array given, in the same order — never add an issue that isn't in that list, and never drop one that is. If grammar.issues is empty, "grammar_breakdown" MUST be an empty array (do not say elsewhere that there were grammar issues if this array is empty).
+- Every "you_said" quote MUST be pulled verbatim from that specific issue's own "context" field in grammar.issues — never invent or approximate the sentence.
+- If grammar.issues is EMPTY (validated grammar error count is zero): "grammar_breakdown" is an empty array, "grammar_accuracy_summary" must NOT say there were errors, and must NOT mention counts, "the system", "candidates", "classification", "validation", or any other internal/technical process. Instead, write one short, natural, encouraging sentence. If grammar.non_scoring_notes is non-empty (candidates like repeated words, self-corrections, or informal spoken forms that were correctly NOT counted as grammar mistakes), you may reference the actual word(s) from that list to explain the sentence sounded natural despite a repetition/hesitation — e.g. "Your grammar was understandable in this response. The repeated words like 'X' and 'Y' sound like spoken hesitations rather than grammar mistakes." Never turn a non_scoring_notes entry into a grammar_breakdown entry or imply it lowered the score.
+- "repetitions" MUST be built only from the repeated_words array given (same words, same counts) — do not add words not in that list, and if that list is empty return an empty "repetitions" array. Each "better_alternatives" entry should be a word/phrase that would naturally fit in place of the repeated word in this student's own sentences.
 - "advanced_grammar_used" entries MUST each have a quoted_example that is real, verbatim text pulled from the transcript. If you cannot find a genuine example of a construction, do not include an entry for it. An empty list is the correct output when nothing is clearly evidenced.
 - Never state a numeric score, count, or statistic anywhere in your response other than by referencing the ones given to you — do not compute or restate rounded/alternate versions of them.
-- Every "quoted_example" and every reference to repeated words/fillers/grammar issues must be traceable to the transcript or evidence given below, not invented.
+- Every quote and every reference to repeated words/fillers/grammar issues must be traceable to the transcript or evidence given below, not invented.
+- Write every explanation so a learner who reads it would immediately understand: what they did, why it's wrong (or, for strengths, why it's good), what to say instead, and how to avoid the same mistake next time. Avoid generic filler advice like "keep practicing" — every sentence must be specific to THIS transcript.
+- Be conservative everywhere in this report: only include a suggestion, correction, or "weakness" when there is genuine, specific evidence for it. Do not pad a section with generic advice (default transition-word suggestions, forced synonym swaps, boilerplate "advanced construction" claims, or invented weaknesses) just to make it look complete — a short, honest, mostly-empty section is correct when that's what the evidence supports.
+- Match the report's length to the evidence: a short transcript (see low_evidence_short_sample / word_count in the evidence) should get shorter, more focused feedback, not the same volume of commentary as a long one.
+- Never use internal/technical/system language anywhere in the report (e.g. "the system recorded", "candidate", "classification", "validated", "true_grammar_error", rule IDs) — write only as a human teacher speaking directly to the student.
 """.strip()
 
 
@@ -386,7 +415,16 @@ def build_teacher_prompt(transcript: str, transcript_with_fillers: Optional[str]
         "recompute or contradict them; only add brief, evidence-grounded elaboration "
         "in the *_extra fields.\n"
         "6. Write like a real teacher giving direct, specific, encouraging-but-honest "
-        "feedback about THIS transcript — not generic, templated praise.\n\n"
+        "feedback about THIS transcript — not generic, templated praise.\n"
+        "7. For every grammar issue actually present in grammar.issues, write a full "
+        "four-part explanation (what the student said, why it's wrong, what to say "
+        "instead, how to avoid it next time) in 'grammar_breakdown' — never compress "
+        "it down to a one-line label like 'tense error'. Never write a "
+        "'grammar_breakdown' entry for a mistake that isn't in grammar.issues.\n"
+        "8. For fillers, if filler.count is greater than zero, explain the concrete "
+        "effect of that many fillers on this specific delivery and give practical, "
+        "specific techniques for reducing them — never just restate the count with "
+        "no explanation.\n\n"
         + REPORT_JSON_SCHEMA_INSTRUCTIONS
     )
 
@@ -516,6 +554,91 @@ class GroqReportProvider:
         )
 
 
+def _fallback_grammar_breakdown(report_evidence: dict) -> list:
+    """Belt-and-suspenders fallback used ONLY when the model's own
+    'grammar_breakdown' is missing/empty while real grammar issues exist in
+    the evidence. Built purely from the deterministic grammar-tool fields
+    that are already part of report_evidence (context/wrong/correct/message)
+    — nothing here is invented, it's just a plainer, templated rendering of
+    the same evidence, so the learner still gets a grounded explanation even
+    if the model's response was malformed."""
+    issues = (report_evidence.get("grammar") or {}).get("issues") or []
+    out = []
+    for iss in issues:
+        wrong = iss.get("wrong")
+        correct = iss.get("correct")
+        context = iss.get("context") or ""
+        message = iss.get("message") or ""
+        what = (
+            f"You used \"{wrong}\" where \"{correct}\" was needed."
+            if wrong and correct else (message or "A grammar issue was flagged here.")
+        )
+        corrected = context.replace(wrong, correct, 1) if (wrong and correct and wrong in context) else context
+        out.append({
+            "you_said": context or wrong or "",
+            "what_went_wrong": what,
+            "why_its_wrong": message or "This breaks an English grammar rule in this context.",
+            "correct_version": corrected,
+            "how_to_avoid_next_time": (
+                f"Before you speak, check whether the verb form/word you're about to use "
+                f"('{wrong}') actually matches the time frame of the sentence."
+                if wrong else "Re-read the sentence and check the verb tense/form matches the rest of the context."
+            ),
+        })
+    return out
+
+
+def _fallback_grammar_zero_errors_summary(report_evidence: dict) -> str:
+    """Grounded, conservative overview.grammar_accuracy_summary used
+    whenever the validated grammar error count is zero — ALWAYS used in
+    that case (see merge_report()), regardless of what the model wrote, so
+    a model that ignores the zero-errors prompt instructions can never make
+    it into the served report saying there was an error, referencing a
+    stale/pre-validation count, or using internal language ("the system
+    recorded...", "candidate", "classification"). Built only from
+    grammar.non_scoring_notes (context_notes grammar_context_validator.py
+    already produced for candidates it correctly did NOT count as
+    true_grammar_error) — never invents a mistake, and never implies any
+    of these lowered the score."""
+    notes = (report_evidence.get("grammar") or {}).get("non_scoring_notes") or []
+    mentionable = [n.get("wrong") for n in notes if n.get("wrong")]
+    if mentionable:
+        quoted = ", ".join(f"'{w}'" for w in mentionable[:3])
+        return (
+            f"Your grammar was understandable in this response. Moments like {quoted} "
+            f"sound like spoken hesitations or self-corrections rather than grammar "
+            f"mistakes, so they weren't counted as errors. Focus on saying your "
+            f"sentences smoothly without repeating words."
+        )
+    return ("No grammar mistakes were detected in this response — your sentences "
+            "were grammatically correct.")
+
+
+def _fallback_fillers(report_evidence: dict) -> dict:
+    """Same belt-and-suspenders idea as _fallback_grammar_breakdown, for the
+    fillers section — built only from filler.count/rate_per_min/words
+    already in report_evidence."""
+    filler = report_evidence.get("filler") or {}
+    count = filler.get("count") or 0
+    if not count:
+        return {"summary": "No significant filler use detected.", "why_it_matters": "", "how_to_reduce": []}
+    rate = filler.get("rate_per_min")
+    rate_txt = f" (about {rate} per minute)" if rate is not None else ""
+    return {
+        "summary": f"{count} filler instances were detected in this sample{rate_txt}.",
+        "why_it_matters": (
+            f"With {count} filler sounds, your listener has to work harder to follow the thread of "
+            "your sentence, and the delivery can come across as less confident or less prepared, "
+            "even when the underlying ideas are clear."
+        ),
+        "how_to_reduce": [
+            "When you feel a filler coming, pause silently instead — a short silence sounds far more confident than 'um' or 'uh'.",
+            "Slow down slightly right before a word or idea you're unsure of, instead of filling the gap with a sound.",
+            "Practice saying the sentence once in your head before you say it out loud, so you're not searching for words mid-sentence.",
+        ],
+    }
+
+
 def merge_report(model_report: dict, report_evidence: dict) -> dict:
     """Combines the model's narrative JSON with the locked (Python-computed,
     never-model-touched) scores/bands/rubric sentences. Even if the model's
@@ -524,6 +647,67 @@ def merge_report(model_report: dict, report_evidence: dict) -> dict:
     performance_summary is the *_extra elaboration text."""
     locked = report_evidence.get("locked_rubric", {})
     elaboration = model_report.get("performance_summary_elaboration", {}) or {}
+
+    growth_areas = dict(model_report.get("growth_areas") or {})
+    overview = dict(model_report.get("overview") or {})
+
+    # Grammar consistency (this is the ONLY place grammar_breakdown / the
+    # grammar narrative are allowed to be set) — real_issue_count is the
+    # validated true_grammar_error count from grammar_context_validator.py,
+    # the exact same number score_grammar() used for the numeric score.
+    # Both branches below are UNCONDITIONAL locks, not "only if the model
+    # got it wrong" fallbacks: a model that returns a well-formed but
+    # HALLUCINATED grammar_breakdown/summary when real_issue_count == 0 (a
+    # non-empty list, or prose that references errors that don't exist)
+    # must never reach the served report, so this can't be gated on
+    # "did the model already agree with the evidence".
+    real_issue_count = len((report_evidence.get("grammar") or {}).get("issues") or [])
+    if real_issue_count == 0:
+        # Zero validated grammar errors: grammar_breakdown is always empty
+        # and the summary is always the grounded, non-inventing fallback —
+        # never the model's own text, so it can never say "the system
+        # recorded an error" or disagree with Grammar Errors == 0.
+        growth_areas["grammar_breakdown"] = []
+        overview["grammar_accuracy_summary"] = _fallback_grammar_zero_errors_summary(report_evidence)
+    else:
+        model_breakdown = growth_areas.get("grammar_breakdown")
+        if not (isinstance(model_breakdown, list) and len(model_breakdown) == real_issue_count):
+            growth_areas["grammar_breakdown"] = _fallback_grammar_breakdown(report_evidence)
+
+    # Same idea for fillers: keep the model's structured explanation if it
+    # provided one AND there actually were fillers to explain; force the
+    # grounded fallback whenever filler.count is zero (so the model can't
+    # invent "why it matters" advice for fillers that don't exist) or when
+    # the model's own response was malformed/empty.
+    filler_count = (report_evidence.get("filler") or {}).get("count") or 0
+    model_fillers = growth_areas.get("fillers")
+    if filler_count == 0 or not isinstance(model_fillers, dict) or not model_fillers.get("summary"):
+        growth_areas["fillers"] = _fallback_fillers(report_evidence)
+
+    # Repeated-words consistency: if there are no real repeated content
+    # words in the evidence, the growth-area note and the repetitions list
+    # must both say/show nothing — closes the same class of loophole as
+    # grammar_breakdown above (a well-formed but invented non-empty
+    # "repetitions" array otherwise would have passed through untouched).
+    repeated_words = report_evidence.get("repeated_words") or []
+    if not repeated_words:
+        growth_areas["repeated_overused_words"] = "No significant repetition detected."
+        model_repetitions = []
+    else:
+        model_repetitions = model_report.get("repetitions", [])
+        if not isinstance(model_repetitions, list):
+            model_repetitions = []
+
+    # Advanced-grammar consistency: "advanced_grammar_used" already requires
+    # a verbatim quoted_example per the prompt, but nothing previously
+    # stopped prose in overview.advanced_grammar_constructions_detected from
+    # claiming a construction exists while the structured list stayed
+    # empty (or vice versa) — lock the prose to match the list.
+    model_advanced = model_report.get("advanced_grammar_used", [])
+    if not isinstance(model_advanced, list):
+        model_advanced = []
+    if not model_advanced:
+        overview["advanced_grammar_constructions_detected"] = "None clearly evidenced in this sample."
 
     performance_summary = {
         "accuracy": {
@@ -550,8 +734,8 @@ def merge_report(model_report: dict, report_evidence: dict) -> dict:
     }
 
     return {
-        "overview": model_report.get("overview", {}),
-        "growth_areas": model_report.get("growth_areas", {}),
+        "overview": overview,
+        "growth_areas": growth_areas,
         "vocabulary": {
             **model_report.get("vocabulary", {}),
             "active_vocabulary_size": report_evidence.get("vocabulary", {}).get("unique_words"),
@@ -560,8 +744,8 @@ def merge_report(model_report: dict, report_evidence: dict) -> dict:
             "vocabulary_distribution_by_level": report_evidence.get("vocabulary", {})
                 .get("vocabulary_distribution_by_level"),
         },
-        "repetitions": model_report.get("repetitions", []),
-        "advanced_grammar_used": model_report.get("advanced_grammar_used", []),
+        "repetitions": model_repetitions,
+        "advanced_grammar_used": model_advanced,
         "performance_summary": performance_summary,
     }
 

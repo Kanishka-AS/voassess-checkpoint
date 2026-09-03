@@ -453,6 +453,204 @@
   .notice.warn strong { color: var(--warn); }
   .notice.good { border-color: var(--good); border-style: solid; background: var(--good-soft); }
 
+  /* ─── Word chips / issue cards / raw JSON ────────────────────────────────
+     These classes are produced by app.js (renderVocabulary, renderGrammar,
+     renderRawJson, buildTeacherReportHtml) but were missing from this file's
+     stylesheet — debug-ui/style.css has them under different CSS-variable
+     names but isn't <link>-ed anywhere, so they were rendering unstyled.
+     Pulled in here (translated to this file's --bg-card/--bg-input tokens)
+     as the small integration fix called out in the brief. */
+  .word-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .word-chip {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+  .issue-card {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--warn);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .issue-row { display: flex; gap: 8px; margin-bottom: 3px; }
+  .issue-row .k { color: var(--text-faint); min-width: 70px; flex-shrink: 0; }
+  .issue-row .v-wrong { color: var(--bad); font-family: var(--mono); }
+  .issue-row .v-correct { color: var(--good); font-family: var(--mono); }
+  .raw-json summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-dim); padding: 4px 0; }
+  .raw-json pre {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .copy-btn {
+    background: var(--bg-input); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 10px; border-radius: var(--radius-sm); font-size: 12px; cursor: pointer; margin-left: 8px;
+  }
+  .copy-btn:hover { border-color: var(--accent); }
+
+  /* ─── Teacher Report (Groq) building blocks — used by buildTeacherReportHtml,
+     shared by both the raw Debug Details card and the polished Learner Report. */
+  .tr-lede {
+    background: var(--bg-input); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: var(--text);
+  }
+  .tr-lede-extra { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .tr-lede-extra .row { display: flex; gap: 8px; font-size: 12.5px; }
+  .tr-lede-extra .row .k { color: var(--text-faint); flex-shrink: 0; min-width: 130px; }
+  .tr-lede-extra .row .v { color: var(--text); }
+  .tr-section-title {
+    display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--text-faint); margin: 20px 0 8px 0; padding-top: 14px; border-top: 1px solid var(--border);
+  }
+  .tr-section-title:first-of-type { padding-top: 0; border-top: none; margin-top: 4px; }
+  .tr-band-row { display: grid; gap: 8px; }
+  .tr-band-card {
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px; display: flex; align-items: flex-start; gap: 10px;
+  }
+  .tr-band-pill {
+    flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; min-width: 64px; text-align: center;
+  }
+  .tr-band-pill.band-high { background: var(--good-soft); color: var(--good); }
+  .tr-band-pill.band-medium { background: var(--warn-soft); color: var(--warn); }
+  .tr-band-pill.band-low { background: var(--bad-soft); color: var(--bad); }
+  .tr-band-body { font-size: 13px; line-height: 1.5; }
+  .tr-band-body .label { font-weight: 600; color: var(--text); }
+  .tr-band-body .explain { color: var(--text-dim); margin-top: 2px; }
+  .grammar-fix-card { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; }
+  .grammar-fix-card + .grammar-fix-card { margin-top: 10px; }
+  .gfc-said {
+    font-family: var(--mono); font-size: 12.5px; color: var(--text); background: var(--bad-soft);
+    border-left: 3px solid var(--bad); border-radius: 4px; padding: 8px 10px; line-height: 1.5;
+  }
+  .gfc-said .tag, .gfc-correct .tag {
+    display: block; font-family: var(--sans); font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 4px; font-weight: 700;
+  }
+  .gfc-said .tag { color: var(--bad); }
+  .gfc-why { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin: 10px 0; }
+  .gfc-correct {
+    font-family: var(--mono); font-size: 12.5px; color: var(--text); background: var(--good-soft);
+    border-left: 3px solid var(--good); border-radius: 4px; padding: 8px 10px; line-height: 1.5;
+  }
+  .gfc-correct .tag { color: var(--good); }
+  .gfc-tip {
+    display: flex; gap: 7px; font-size: 12.5px; color: var(--text-dim); margin-top: 10px;
+    padding-top: 10px; border-top: 1px dashed var(--border); line-height: 1.5;
+  }
+  .gfc-tip .icon { flex-shrink: 0; }
+  .filler-card { background: var(--bg-input); border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: var(--radius-sm); padding: 12px 14px; }
+  .filler-card .summary { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .filler-card .why { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .filler-reduce-list { list-style: none; margin: 10px 0 0 0; padding: 10px 0 0 0; border-top: 1px solid var(--border); display: grid; gap: 6px; }
+  .filler-reduce-list li { display: flex; gap: 8px; font-size: 12.5px; color: var(--text); line-height: 1.5; }
+  .filler-reduce-list li::before { content: "→"; color: var(--warn); flex-shrink: 0; font-weight: 700; }
+  .repeat-row {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px; background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 8px; font-size: 12.5px;
+  }
+  .repeat-row .word { font-family: var(--mono); color: var(--bad); background: var(--bad-soft); border-radius: 4px; padding: 2px 8px; }
+  .repeat-row .freq, .repeat-row .arrow { color: var(--text-faint); }
+  .repeat-row .alt { font-family: var(--mono); color: var(--good); background: var(--good-soft); border-radius: 4px; padding: 2px 8px; }
+  .adv-grammar-card { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; }
+  .adv-grammar-card .badge {
+    display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 3px 9px; margin-bottom: 6px;
+  }
+  .adv-grammar-card .quote { font-family: var(--mono); font-size: 13px; color: var(--good); line-height: 1.5; }
+  .adv-grammar-card .note { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .tr-growth-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .tr-growth-list li { font-size: 13px; color: var(--text); line-height: 1.55; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .tr-growth-list li:last-child { border-bottom: none; padding-bottom: 0; }
+  .tr-growth-list li .label { color: var(--text-dim); font-weight: 600; }
+  .vocab-block .row { font-size: 13px; line-height: 1.55; margin-bottom: 8px; }
+  .vocab-block .row:last-child { margin-bottom: 0; }
+  .vocab-block .row .k { color: var(--text-faint); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+
+  /* ─── Learner Report (polished, PDF-referenced) ──────────────────────────
+     Report shell is deliberately light (paper-like), contrasting with the
+     dark debug shell around it, per "professional assessment report, not a
+     developer dashboard". Uses this file's existing accent/good/warn/bad
+     tokens for score coloring rather than inventing a new palette. */
+  .lr {
+    background: #f7f5f0;
+    color: #263238;
+    border-radius: var(--radius);
+    padding: 28px 30px 34px;
+    margin-bottom: 18px;
+    border: 1px solid var(--border);
+  }
+  .lr-masthead {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 22px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #56636b;
+  }
+  .lr-masthead span { font-weight: 400; text-transform: none; letter-spacing: 0; color: #8a97a0; font-size: 13px; }
+  .lr-overall {
+    text-align: center; padding: 26px 20px 30px; margin-bottom: 26px;
+    border: 1px solid #dedad0; border-radius: var(--radius); background: #ffffff;
+  }
+  .lr-overall-kicker { font-size: 11.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #8a97a0; margin-bottom: 10px; }
+  .lr-overall-score { font-size: 52px; font-weight: 800; line-height: 1; color: #1f2d33; }
+  .lr-overall-score .lr-overall-max { font-size: 20px; font-weight: 500; color: #8a97a0; margin-left: 4px; }
+  .lr-overall-cefr { font-size: 22px; font-weight: 700; margin-top: 10px; color: var(--accent); }
+  .lr-overall-cefr-label { font-size: 13px; color: #56636b; margin-top: 2px; }
+  .lr-section { padding: 22px 0; border-top: 1px solid #e2ded3; }
+  .lr-section:first-of-type { border-top: none; }
+  .lr-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .lr-section-head h3 { font-size: 15px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #1f2d33; margin: 0; }
+  .lr-score { font-size: 22px; font-weight: 800; color: #1f2d33; font-family: var(--mono); }
+  .lr-score.lr-good { color: #1a8f5e; }
+  .lr-score.lr-ok { color: #b3821a; }
+  .lr-score.lr-poor { color: #c2453f; }
+  .lr-section-body { font-size: 13.5px; line-height: 1.6; color: #33454c; }
+  .lr-metric-row { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-bottom: 14px; }
+  .lr-metric { min-width: 120px; }
+  .lr-metric .k { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #8a97a0; margin-bottom: 2px; }
+  .lr-metric .v { font-size: 17px; font-weight: 700; color: #1f2d33; font-family: var(--mono); }
+  .lr-feedback { background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 10px; }
+  .lr-feedback .band {
+    display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 2px 9px; border-radius: 999px; margin-bottom: 6px;
+  }
+  .lr-feedback .band.band-high { background: #e3f5eb; color: #1a8f5e; }
+  .lr-feedback .band.band-medium { background: #fbf0d9; color: #b3821a; }
+  .lr-feedback .band.band-low { background: #fbe6e5; color: #c2453f; }
+  .lr-rec {
+    display: flex; gap: 8px; font-size: 13px; color: #33454c; margin-top: 10px; padding-top: 10px;
+    border-top: 1px dashed #e2ded3; line-height: 1.55;
+  }
+  .lr-rec .arrow { color: var(--accent); flex-shrink: 0; font-weight: 700; }
+  .lr-strength { display: flex; gap: 8px; font-size: 13px; color: #1a8f5e; margin-bottom: 6px; }
+  .lr-word-chip { display: inline-block; background: #eef1f5; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-family: var(--mono); color: #33454c; margin: 2px 4px 2px 0; }
+  .lr-dist-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12.5px; }
+  .lr-dist-row .dist-label { width: 130px; flex-shrink: 0; color: #56636b; }
+  .lr-dist-row .dist-bar-wrap { flex: 1; background: #eceae3; border-radius: 4px; overflow: hidden; height: 8px; }
+  .lr-dist-row .dist-bar { height: 100%; background: var(--accent); border-radius: 4px; }
+  .lr-dist-row .dist-pct { width: 40px; text-align: right; color: #1f2d33; font-family: var(--mono); }
+  .lr-transcript { background: #ffffff; border: 1px solid #e2ded3; border-radius: var(--radius-sm); padding: 14px 16px; font-size: 13.5px; line-height: 1.7; color: #33454c; white-space: pre-wrap; }
+  .lr-gap-note { font-size: 12px; color: #8a97a0; margin-top: 10px; font-style: italic; }
+  .lr-debug-toggle { margin-top: 4px; }
+  .lr-debug-toggle > summary {
+    cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 600; color: var(--text-dim);
+    padding: 10px 4px; user-select: none;
+  }
+  .lr-debug-toggle > summary::-webkit-details-marker { display: none; }
+  .lr-debug-toggle > summary::before { content: "▶ "; }
+  .lr-debug-toggle[open] > summary::before { content: "▼ "; }
+  .lr-debug-toggle > div { padding-top: 8px; display: grid; gap: 16px; }
+
   /* ─── Tabs ───────────────────────────────────────────────────────────── */
   .tabs {
     display: flex;
@@ -910,7 +1108,20 @@
         <div class="empty-state" id="emptyState">
           Record something with the microphone, then click <strong>Analyze recording</strong>.
         </div>
-        <div id="analysisResults"></div>
+
+        <!-- Polished, PDF-referenced learner report. Built by
+             buildLearnerReportHtml() from the same response object the
+             Debug Details below render — no second API call, no frontend
+             scoring, nothing here that Debug Details doesn't also show. -->
+        <div id="learnerReport" class="lr"></div>
+
+        <!-- Existing technical/debug rendering, unchanged, just relocated
+             under a collapsible so it no longer competes with the report
+             above for attention (still fully present per the brief). -->
+        <details class="lr-debug-toggle" id="debugDetailsToggle">
+          <summary>Developer / Debug Details</summary>
+          <div id="analysisResults"></div>
+        </details>
       </div>
 
       <!-- Saved Quick Assessments Tab -->

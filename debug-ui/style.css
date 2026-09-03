@@ -261,3 +261,208 @@ table.tokens th { color: var(--text-dim); font-weight: 600; font-size: 11px; tex
   word-break: break-word;
   margin: 6px 0 0 0;
 }
+
+/* ─── Teacher Report (Groq) ─────────────────────────────────────────────── */
+
+.tr-lede {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.tr-lede-extra {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.tr-lede-extra .row { display: flex; gap: 8px; font-size: 12.5px; }
+.tr-lede-extra .row .k { color: var(--text-dim); flex-shrink: 0; min-width: 130px; }
+.tr-lede-extra .row .v { color: var(--text); }
+
+.tr-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin: 20px 0 8px 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.tr-section-title:first-of-type { padding-top: 0; border-top: none; margin-top: 4px; }
+.tr-section-title .n { color: var(--text-faint, var(--text-dim)); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+.tr-band-row { display: grid; gap: 8px; }
+.tr-band-card {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.tr-band-pill {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  min-width: 64px;
+  text-align: center;
+}
+.tr-band-pill.band-high { background: rgba(62, 207, 142, 0.16); color: var(--good); }
+.tr-band-pill.band-medium { background: rgba(232, 179, 57, 0.16); color: var(--warn); }
+.tr-band-pill.band-low { background: rgba(239, 91, 91, 0.16); color: var(--bad); }
+.tr-band-body { font-size: 13px; line-height: 1.5; }
+.tr-band-body .label { font-weight: 600; color: var(--text); }
+.tr-band-body .explain { color: var(--text-dim); margin-top: 2px; }
+
+.grammar-fix-card {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.grammar-fix-card + .grammar-fix-card { margin-top: 10px; }
+.gfc-said {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+  background: rgba(239, 91, 91, 0.08);
+  border-left: 3px solid var(--bad);
+  border-radius: 4px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+.gfc-said .tag { display: block; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--bad); margin-bottom: 4px; font-weight: 700; }
+.gfc-why { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin: 10px 0; }
+.gfc-correct {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+  background: rgba(62, 207, 142, 0.08);
+  border-left: 3px solid var(--good);
+  border-radius: 4px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+.gfc-correct .tag { display: block; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--good); margin-bottom: 4px; font-weight: 700; }
+.gfc-tip {
+  display: flex;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  line-height: 1.5;
+}
+.gfc-tip .icon { flex-shrink: 0; }
+
+.filler-card {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.filler-card .summary { font-size: 13px; color: var(--text); line-height: 1.5; }
+.filler-card .why { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+.filler-reduce-list {
+  list-style: none;
+  margin: 10px 0 0 0;
+  padding: 10px 0 0 0;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+}
+.filler-reduce-list li {
+  display: flex;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.filler-reduce-list li::before { content: "→"; color: var(--warn); flex-shrink: 0; font-weight: 700; }
+
+.repeat-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+.repeat-row .word {
+  font-family: var(--mono);
+  color: var(--bad);
+  background: rgba(239, 91, 91, 0.1);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.repeat-row .freq { color: var(--text-dim); }
+.repeat-row .arrow { color: var(--text-dim); }
+.repeat-row .alt {
+  font-family: var(--mono);
+  color: var(--good);
+  background: rgba(62, 207, 142, 0.1);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+.adv-grammar-card {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.adv-grammar-card .badge {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: rgba(91, 141, 239, 0.14);
+  border-radius: 999px;
+  padding: 3px 9px;
+  margin-bottom: 6px;
+}
+.adv-grammar-card .quote {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--good);
+  line-height: 1.5;
+}
+.adv-grammar-card .note { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+
+.tr-growth-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.tr-growth-list li {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.tr-growth-list li:last-child { border-bottom: none; padding-bottom: 0; }
+.tr-growth-list li .label { color: var(--text-dim); font-weight: 600; }
+
+.vocab-block .row { font-size: 13px; line-height: 1.55; margin-bottom: 8px; }
+.vocab-block .row:last-child { margin-bottom: 0; }
+.vocab-block .row .k { color: var(--text-dim); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }

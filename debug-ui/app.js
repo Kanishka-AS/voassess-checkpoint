@@ -21,7 +21,9 @@ const els = {
   analyzeBtn: document.getElementById("analyzeBtn"),
   statusLine: document.getElementById("statusLine"),
   results: document.getElementById("results"),
+  analysisResults: document.getElementById("analysisResults"),
   emptyState: document.getElementById("emptyState"),
+  learnerReport: document.getElementById("learnerReport"),
   waveform: document.getElementById("waveform"),
   pronProviderBox: document.getElementById("pronProviderBox"),
   sttProviderBox: document.getElementById("sttProviderBox"),
@@ -516,88 +518,61 @@ function viewGuidedDetail(index) {
 
 function viewTeacherReport(index) {
   const r = guidedAssessments[index];
-  const modal = document.getElementById('detailModal');
-  const body = document.getElementById('modalBody');
-  
-  document.getElementById('modalTitle').textContent = `📝 Teacher Report - ${r.name || 'Assessment #' + r.id}`;
-  
+
+  // Shows the report inline in the Analysis tab (reusing the same
+  // container/pipeline as a live recording's results) instead of a modal
+  // popup — switches tabs once, to bring the learner to where the content
+  // now lives, then renders in place; no dialog overlay involved.
+  switchTab('analysis');
+  els.emptyState.style.display = "none";
+  els.analysisResults.innerHTML = "";
+  const debugToggle = document.getElementById('debugDetailsToggle');
+  if (debugToggle) debugToggle.open = true; // this view only ever renders into Debug Details, so expand it
+
   const report = r.teacher_report;
-  
+  const title = `📝 Teacher Report — ${r.name || 'Assessment #' + r.id}`;
+
   if (!report) {
-    body.innerHTML = '<div class="notice">No teacher report available for this assessment.</div>';
-    modal.classList.add('active');
+    els.analysisResults.appendChild(
+      card(`<h3>${esc(title)}</h3><div class="notice">${
+        esc(r.teacher_report_detail || 'No teacher report available for this assessment.')
+      }</div>`)
+    );
+    els.analysisResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
-  
-  let html = `
+
+  // Renders the ACTUAL Groq-generated report (same shape produced by
+  // groq_provider.py: overview / growth_areas / vocabulary / repetitions /
+  // advanced_grammar_used / performance_summary) via the shared builder —
+  // this used to render a hardcoded strengths/areas_for_improvement/
+  // specific_recommendations/teacher_notes shape that the backend never
+  // actually sends, so real Groq remarks never showed up here.
+  const html = `
     <div class="teacher-report">
       <div class="report-summary">
         <h4>📊 Summary</h4>
         <div class="metric-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div class="metric">
             <div class="label">Overall Score</div>
-            <div class="value">${report.overall_score || r.overall_score || '—'}</div>
+            <div class="value">${r.overall_score ?? '—'}</div>
           </div>
           <div class="metric">
             <div class="label">CEFR Level</div>
-            <div class="value">${report.cefr_level || r.cefr_level || '—'}</div>
+            <div class="value">${r.cefr_level ?? '—'}</div>
           </div>
           <div class="metric">
             <div class="label">Archetype</div>
-            <div class="value">${report.archetype || r.archetype || '—'}</div>
+            <div class="value">${r.archetype ?? '—'}</div>
           </div>
         </div>
       </div>
-  `;
-  
-  if (report.strengths && report.strengths.length) {
-    html += `
-      <div style="margin:12px 0;">
-        <h4>💪 Strengths</h4>
-        <ul style="list-style:none;padding:0;margin:0;">
-          ${report.strengths.map(s => `<li style="padding:4px 0;border-bottom:1px solid var(--border);">✅ ${s}</li>`).join('')}
-        </ul>
-      </div>
-    `;
-  }
-  
-  if (report.areas_for_improvement && report.areas_for_improvement.length) {
-    html += `
-      <div style="margin:12px 0;">
-        <h4>📈 Areas for Improvement</h4>
-        <ul style="list-style:none;padding:0;margin:0;">
-          ${report.areas_for_improvement.map(s => `<li style="padding:4px 0;border-bottom:1px solid var(--border);">📌 ${s}</li>`).join('')}
-        </ul>
-      </div>
-    `;
-  }
-  
-  if (report.specific_recommendations && report.specific_recommendations.length) {
-    html += `
-      <div style="margin:12px 0;">
-        <h4>🎯 Specific Recommendations</h4>
-        <ul style="list-style:none;padding:0;margin:0;">
-          ${report.specific_recommendations.map(s => `<li style="padding:4px 0;border-bottom:1px solid var(--border);">💡 ${s}</li>`).join('')}
-        </ul>
-      </div>
-    `;
-  }
-  
-  if (report.teacher_notes) {
-    html += `
-      <div style="margin:12px 0;">
-        <h4>📝 Teacher Notes</h4>
-        <div class="notice">${report.teacher_notes}</div>
-      </div>
-    `;
-  }
-  
-  html += `
+      ${buildTeacherReportHtml(report)}
     </div>
   `;
-  
-  body.innerHTML = html;
-  modal.classList.add('active');
+
+  els.analysisResults.appendChild(card(`<h3>${esc(title)}</h3>${html}`));
+  els.analysisResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function exportGuidedCSV() {
@@ -1053,7 +1028,8 @@ function setStatus(text, kind) {
 }
 
 function clearResults() {
-  els.results.innerHTML = "";
+  els.analysisResults.innerHTML = "";
+  if (els.learnerReport) els.learnerReport.innerHTML = "";
 }
 
 function card(html) {
@@ -1082,7 +1058,7 @@ function metric(label, value) {
 }
 
 function renderNetworkError(err, elapsedMs) {
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`
       <div class="error-box">
         <h3>Request failed</h3>
@@ -1096,7 +1072,7 @@ function renderNetworkError(err, elapsedMs) {
 
 function renderHttpError(status, body, rawText, elapsedMs) {
   const detail = body ? JSON.stringify(body, null, 2) : rawText || "(empty response body)";
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`
       <div class="error-box">
         <h3>Request failed</h3>
@@ -1110,7 +1086,7 @@ function renderHttpError(status, body, rawText, elapsedMs) {
 }
 
 function renderInvalidResponse(rawText, parseError, elapsedMs) {
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`
       <div class="error-box">
         <h3>Request failed</h3>
@@ -1127,11 +1103,16 @@ function renderInvalidResponse(rawText, parseError, elapsedMs) {
 function renderResults(data, elapsedMs) {
   els.emptyState.style.display = "none";
 
+  // Polished, PDF-referenced report — built from the exact same `data`
+  // object the Debug Details cards below render from. No second request,
+  // no recomputation: every number here is read straight off backendResult.
+  if (els.learnerReport) els.learnerReport.innerHTML = buildLearnerReportHtml(data);
+
   renderPerf(elapsedMs, data.duration);
   renderTranscript(data.transcript);
   if (data.stt) renderStt(data.stt);
   if (data.vocabulary) renderVocabulary(data.vocabulary);
-  if (data.grammar) renderGrammar(data.grammar, data.grammar_tool_available);
+  if (data.grammar) renderGrammar(data.grammar, data.grammar_tool_available, data.grammar_context);
   renderFillers(data.filler, data.filler_occurrences);
   renderPronunciation(data.pronunciation);
   renderPacing(data.pace);
@@ -1139,12 +1120,462 @@ function renderResults(data, elapsedMs) {
   renderOverall(data);
   renderTokenAnalysis(data.linguistic_analysis, data.languagetool_errors);
   renderWordTimings(data.word_timings);
+  renderTeacherReport(data.teacher_report, data.teacher_report_detail);
   if (data.note) renderNote(data.note);
   renderRawJson(data);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// LEARNER REPORT — polished, PDF-referenced rendering of the SAME response
+// object (`data`) the Debug Details cards below render from. Nothing here
+// computes a score, a CEFR level, or an error count; every value is read
+// straight off backendResult / backendResult.teacher_report. Where the PDF
+// reference showed copy this backend doesn't produce (a per-CEFR-level
+// narrative sentence, the standard CEFR level names), only the standard,
+// candidate-independent CEFR taxonomy names are used as static labels
+// (CEFR_LEVEL_NAMES below) — never anything that reads as feedback about
+// this specific candidate. See the end-of-task report for what's still
+// missing from the backend (a pacing-only explanation distinct from the
+// combined fluency explanation).
+// ─────────────────────────────────────────────────────────────────────────
+
+const CEFR_LEVEL_NAMES = {
+  A1: "Beginner", A2: "Elementary", B1: "Intermediate",
+  B2: "Upper-Intermediate", C1: "Advanced", C2: "Proficiency",
+};
+
+function lrBandClass(band) {
+  const b = (band || "").toLowerCase();
+  return b === "high" ? "band-high" : b === "low" ? "band-low" : "band-medium";
+}
+
+function lrScoreClass(score) {
+  if (score === undefined || score === null) return "";
+  if (score >= 75) return "lr-good";
+  if (score >= 50) return "lr-ok";
+  return "lr-poor";
+}
+
+function lrSection(title, score, bodyHtml) {
+  if (!bodyHtml) return "";
+  return `<div class="lr-section">
+    <div class="lr-section-head">
+      <h3>${esc(title)}</h3>
+      ${score !== undefined && score !== null ? `<div class="lr-score ${lrScoreClass(score)}">${esc(Math.round(score))}</div>` : ""}
+    </div>
+    <div class="lr-section-body">${bodyHtml}</div>
+  </div>`;
+}
+
+function lrMetric(label, value) {
+  if (value === undefined || value === null) return "";
+  return `<div class="lr-metric"><span class="k">${esc(label)}</span><span class="v">${esc(value)}</span></div>`;
+}
+
+function lrFeedbackBlock(band, text) {
+  if (!text) return "";
+  return `<div class="lr-feedback">
+    ${band ? `<span class="band ${lrBandClass(band)}">${esc(band)}</span>` : ""}
+    <div>${esc(text)}</div>
+  </div>`;
+}
+
+function lrRecommendation(text) {
+  if (!text) return "";
+  return `<div class="lr-rec"><span class="arrow">→</span><span>${esc(text)}</span></div>`;
+}
+
+function buildOverallResultHtml(data) {
+  if (data.overall === undefined && !data.cefr) return "";
+  const cefr = data.cefr || {};
+  const levelName = CEFR_LEVEL_NAMES[cefr.level] || "";
+  return `<div class="lr-overall">
+    <div class="lr-overall-kicker">Your Overall Result</div>
+    <div class="lr-overall-score">${data.overall !== undefined ? esc(Math.round(data.overall)) : "—"}<span class="lr-overall-max">/100</span></div>
+    ${cefr.level ? `<div class="lr-overall-cefr">${esc(cefr.level)}</div>` : ""}
+    ${levelName ? `<div class="lr-overall-cefr-label">${esc(levelName)}</div>` : ""}
+  </div>`;
+}
+
+function buildGrammarSectionHtml(data, tr) {
+  const g = data.grammar;
+  if (!g) return "";
+  const growth = (tr && tr.growth_areas) || {};
+  const breakdown = Array.isArray(growth.grammar_breakdown) ? growth.grammar_breakdown : [];
+  const accuracy = tr && tr.performance_summary && tr.performance_summary.accuracy;
+
+  let evidenceHtml = "";
+  if (breakdown.length) {
+    // Existing backend-generated grammar feedback — one card per real,
+    // validated grammar issue (see groq_provider.merge_report()).
+    evidenceHtml = breakdown.map(item => `
+      <div class="grammar-fix-card">
+        ${item.you_said ? `<div class="gfc-said"><span class="tag">You said</span>${esc(item.you_said)}</div>` : ""}
+        ${item.what_went_wrong || item.why_its_wrong ? `<div class="gfc-why">${[item.what_went_wrong, item.why_its_wrong].filter(Boolean).map(esc).join(" ")}</div>` : ""}
+        ${item.correct_version ? `<div class="gfc-correct"><span class="tag">Say instead</span>${esc(item.correct_version)}</div>` : ""}
+        ${item.how_to_avoid_next_time ? `<div class="gfc-tip"><span class="icon">💡</span><span>${esc(item.how_to_avoid_next_time)}</span></div>` : ""}
+      </div>`).join("");
+  } else if (Array.isArray(g.issues) && g.issues.length) {
+    // No teacher_report (or malformed breakdown) — fall back to the raw,
+    // still-backend-sourced grammar.issues rather than inventing prose.
+    evidenceHtml = g.issues.map(iss => `
+      <div class="issue-card">
+        ${iss.wrong !== undefined ? `<div class="issue-row"><span class="k">Wrong:</span><span class="v-wrong">${esc(iss.wrong)}</span></div>` : ""}
+        ${iss.correct !== undefined ? `<div class="issue-row"><span class="k">Correct:</span><span class="v-correct">${esc(iss.correct)}</span></div>` : ""}
+        ${iss.learner_explanation ? `<div class="issue-row"><span class="k">Why:</span><span>${esc(iss.learner_explanation)}</span></div>` : ""}
+      </div>`).join("");
+  } else if (g.errors === 0 || growth.grammar_breakdown) {
+    evidenceHtml = `<div class="lr-strength"><span>✓</span><span>${esc((tr && tr.overview && tr.overview.grammar_accuracy_summary) || "No grammar errors detected.")}</span></div>`;
+  }
+
+  const body = `
+    <div class="lr-metric-row">
+      ${lrMetric("Errors", g.errors)}
+    </div>
+    ${evidenceHtml}
+    ${accuracy ? lrFeedbackBlock(accuracy.band, accuracy.teacher_explanation) : ""}
+  `;
+  return lrSection("Grammar", g.score, body);
+}
+
+function buildVocabularySectionHtml(data, tr) {
+  const v = data.vocabulary;
+  if (!v) return "";
+  const trVocab = (tr && tr.vocabulary) || {};
+  const repetitions = Array.isArray(tr && tr.repetitions) ? tr.repetitions : [];
+  const overview = (tr && tr.overview) || {};
+
+  const distribution = trVocab.vocabulary_distribution_by_level;
+  let distHtml = "";
+  if (distribution && typeof distribution === "object") {
+    distHtml = `<div style="margin:12px 0;">` + Object.entries(distribution).map(([level, pct]) => `
+      <div class="lr-dist-row">
+        <span class="dist-label">${esc(level)}</span>
+        <span class="dist-bar-wrap"><span class="dist-bar" style="width:${Math.max(0, Math.min(100, Number(pct) || 0))}%"></span></span>
+        <span class="dist-pct">${esc(pct)}%</span>
+      </div>`).join("") + `</div>`;
+  }
+
+  let wordsHtml = "";
+  if (Array.isArray(trVocab.useful_higher_level_words_used) && trVocab.useful_higher_level_words_used.length) {
+    wordsHtml = `<div style="margin-bottom:10px;">${trVocab.useful_higher_level_words_used.map(w => `<span class="lr-word-chip">${esc(w)}</span>`).join("")}</div>`;
+  }
+
+  let repsHtml = "";
+  if (repetitions.length) {
+    repsHtml = `<div style="margin-top:10px;"><strong style="font-size:12px;color:#8a97a0;text-transform:uppercase;letter-spacing:.04em;">Word repetitions</strong>` +
+      repetitions.map(r => `<div class="repeat-row">
+        <span class="word">${esc(r.word_or_phrase)}</span><span class="freq">used ${esc(r.frequency)}×</span>
+        ${Array.isArray(r.better_alternatives) && r.better_alternatives.length ? `<span class="arrow">→</span>${r.better_alternatives.map(a => `<span class="alt">${esc(a)}</span>`).join("")}` : ""}
+      </div>`).join("") + `</div>`;
+  }
+
+  const body = `
+    <div class="lr-metric-row">
+      ${lrMetric("Active vocabulary", trVocab.active_vocabulary_size ?? v.unique_words)}
+      ${lrMetric("Vocabulary level", trVocab.cefr_level || data.cefr?.level)}
+      ${lrMetric("Unique words", v.unique_words)}
+      ${lrMetric("Total words", v.total_words)}
+    </div>
+    ${distHtml}
+    ${wordsHtml}
+    ${trVocab.active_vocabulary_note ? `<div class="lr-feedback">${esc(trVocab.active_vocabulary_note)}</div>` : (overview.strong_vocabulary_observations ? `<div class="lr-feedback">${esc(overview.strong_vocabulary_observations)}</div>` : "")}
+    ${repsHtml}
+    ${lrRecommendation(trVocab.suggestions_for_improving_vocabulary || (tr && tr.growth_areas && tr.growth_areas.vocabulary_improvements))}
+  `;
+  return lrSection("Vocabulary", v.score, body);
+}
+
+function buildPacingSectionHtml(data) {
+  const pace = data.pace;
+  if (!pace) return "";
+  // Pacing is WPM specifically (see score_free_speech's pace scoring against
+  // the backend's target WPM range) — deliberately NOT paired with the
+  // Fluency teacher_explanation here, since that explanation covers
+  // hesitations/pauses/flow too and would misrepresent itself as a
+  // pacing-only assessment. See buildFluencySectionHtml for that content.
+  // No recommendation line: the backend doesn't currently generate a
+  // pacing-specific recommendation distinct from the Fluency one.
+  const body = `
+    <div class="lr-metric-row">
+      ${lrMetric("Speaking rate (WPM)", pace.wpm)}
+    </div>
+  `;
+  return lrSection("Pacing", pace.score, body);
+}
+
+function buildFluencySectionHtml(data, tr) {
+  // Distinct backend field from `pace` — score_fluency() in app.py measures
+  // continuity of delivery (pause frequency/length + filler/hesitation
+  // rate), not speaking rate. See data.fluency, not data.pace.
+  const fluency = data.fluency;
+  if (!fluency) return "";
+  const perf = tr && tr.performance_summary && tr.performance_summary.fluency;
+  const body = `
+    <div class="lr-metric-row">
+      ${lrMetric("Hesitations", fluency.hesitation_count)}
+      ${lrMetric("Unexpected pauses", fluency.long_pause_count)}
+      ${lrMetric("Pause rate / min", fluency.pause_rate_per_min)}
+    </div>
+    ${fluency.pause_data_available === false ? `<div class="lr-gap-note">Pause detection wasn't available for this STT provider — this score falls back to the filler/hesitation signal alone.</div>` : ""}
+    ${perf ? lrFeedbackBlock(perf.band, perf.teacher_explanation) : ""}
+  `;
+  return lrSection("Fluency", fluency.score, body);
+}
+
+function buildFillerSectionHtml(data, tr) {
+  const filler = data.filler;
+  if (!filler) return "";
+  const growth = (tr && tr.growth_areas) || {};
+  const f = growth.fillers;
+
+  let feedbackHtml = "";
+  if (f && typeof f === "object" && f.summary) {
+    feedbackHtml = `<div class="lr-feedback">
+      <div>${esc(f.summary)}</div>
+      ${f.why_it_matters ? `<div style="margin-top:6px;color:#56636b;">${esc(f.why_it_matters)}</div>` : ""}
+    </div>
+    ${Array.isArray(f.how_to_reduce) && f.how_to_reduce.length ? f.how_to_reduce.map(t => lrRecommendation(t)).join("") : ""}`;
+  } else if (typeof f === "string" && f) {
+    feedbackHtml = `<div class="lr-feedback">${esc(f)}</div>`;
+  }
+
+  const body = `
+    <div class="lr-metric-row">
+      ${lrMetric("Filler count", filler.count)}
+      ${lrMetric("Rate / min", filler.rate_per_min)}
+    </div>
+    ${Array.isArray(filler.words) && filler.words.length ? `<div style="margin-bottom:10px;">${filler.words.map(w => `<span class="lr-word-chip">${esc(w)}</span>`).join("")}</div>` : ""}
+    ${feedbackHtml}
+  `;
+  return lrSection("Filler Words", filler.score, body);
+}
+
+function buildPronunciationSectionHtml(data, tr) {
+  const p = data.pronunciation;
+  if (!p) return "";
+  const useOfEnglish = tr && tr.performance_summary && tr.performance_summary.use_of_english;
+
+  let issuesHtml = "";
+  if (Array.isArray(p.issues) && p.issues.length) {
+    issuesHtml = `<div style="margin-bottom:10px;">${p.issues.map(i => `<span class="lr-word-chip">${esc(i.word)} · ${esc(i.confidence)}%</span>`).join("")}</div>`;
+  }
+
+  const availabilityNote = p.available === false
+    ? `<div class="lr-gap-note">Pronunciation provider (${esc(p.requested_provider || "requested provider")}) was unavailable for this run — score falls back per backend logic.</div>`
+    : "";
+
+  const body = `
+    ${issuesHtml}
+    ${useOfEnglish ? lrFeedbackBlock(useOfEnglish.band, useOfEnglish.teacher_explanation) : ""}
+    ${availabilityNote}
+  `;
+  return lrSection("Pronunciation", p.score, body);
+}
+
+function buildAdvancedGrammarSectionHtml(tr) {
+  const list = Array.isArray(tr && tr.advanced_grammar_used) ? tr.advanced_grammar_used : [];
+  if (!list.length) return ""; // per spec: show this section only when the backend actually provides evidence
+  const body = list.map(a => `
+    <div class="adv-grammar-card">
+      <span class="badge">${esc(a.construction)}</span>
+      <div class="quote">"${esc(a.quoted_example)}"</div>
+      ${a.note ? `<div class="note">${esc(a.note)}</div>` : ""}
+    </div>`).join("");
+  return `<div class="lr-section">
+    <div class="lr-section-head"><h3>Advanced Grammar</h3></div>
+    <div class="lr-section-body">${body}</div>
+  </div>`;
+}
+
+function buildTranscriptSectionHtml(data) {
+  if (data.transcript === undefined) return "";
+  return `<div class="lr-section">
+    <div class="lr-section-head"><h3>Transcript</h3></div>
+    <div class="lr-section-body"><div class="lr-transcript">${esc(data.transcript) || "<em>(empty)</em>"}</div></div>
+  </div>`;
+}
+
+function buildLearnerReportHtml(data) {
+  const tr = data.teacher_report || null;
+  return `
+    <div class="lr-masthead">VoiceCoach <span>Assessment Report</span></div>
+    ${buildOverallResultHtml(data)}
+    ${buildGrammarSectionHtml(data, tr)}
+    ${buildVocabularySectionHtml(data, tr)}
+    ${buildPacingSectionHtml(data)}
+    ${buildFluencySectionHtml(data, tr)}
+    ${buildFillerSectionHtml(data, tr)}
+    ${buildPronunciationSectionHtml(data, tr)}
+    ${buildAdvancedGrammarSectionHtml(tr)}
+    ${buildTranscriptSectionHtml(data)}
+    ${!tr ? `<div class="notice warn" style="margin-top:8px;">AI-generated narrative feedback (Groq teacher report) wasn't available for this run${data.teacher_report_detail ? ": " + esc(data.teacher_report_detail) : "."} Scores and metrics above are still the real backend values — only the feedback/recommendation text is missing.</div>` : ""}
+  `;
+}
+
+// Shared renderer for the actual Groq teacher_report shape produced by
+// groq_provider.py (overview / growth_areas / vocabulary / repetitions /
+// advanced_grammar_used / performance_summary). Used both by the single
+// debug-assessment view (renderTeacherReport) and the guided-assessment
+// modal (viewTeacherReport) so both surfaces show the real model output —
+// nothing here invents fields the backend doesn't send.
+function buildTeacherReportHtml(report) {
+  const perf = report.performance_summary || {};
+  const bandClass = (band) => {
+    const b = (band || "").toLowerCase();
+    return b === "high" ? "band-high" : b === "low" ? "band-low" : "band-medium";
+  };
+  const perfRow = (key, label) => {
+    const p = perf[key];
+    if (!p) return "";
+    const band = p.band || p.rank || "";
+    return `<div class="tr-band-card">
+      <span class="tr-band-pill ${bandClass(band)}">${esc(band)}</span>
+      <div class="tr-band-body">
+        <div class="label">${esc(label)}${p.score !== undefined && p.score !== null ? ` — score ${esc(p.score)}` : ""}</div>
+        ${p.teacher_explanation ? `<div class="explain">${esc(p.teacher_explanation)}</div>` : ""}
+      </div>
+    </div>`;
+  };
+
+  const overview = report.overview || {};
+  const overviewFieldLabels = {
+    grammar_accuracy_summary: "Grammar & accuracy",
+    advanced_grammar_constructions_detected: "Advanced constructions",
+    complex_sentence_usage: "Sentence complexity",
+    strong_vocabulary_observations: "Vocabulary strengths",
+    strong_language_use_observations: "Language use strengths",
+  };
+  const overviewHtml = overview.overall_assessment
+    ? `<div class="tr-lede">
+        ${esc(overview.overall_assessment)}
+        <div class="tr-lede-extra">
+          ${Object.entries(overviewFieldLabels)
+            .filter(([k]) => overview[k])
+            .map(([k, label]) => `<div class="row"><span class="k">${esc(label)}</span><span class="v">${esc(overview[k])}</span></div>`)
+            .join("")}
+        </div>
+      </div>`
+    : "";
+
+  const growth = report.growth_areas || {};
+
+  // Fillers is a structured object: {summary, why_it_matters, how_to_reduce[]}
+  const fillers = growth.fillers;
+  const fillersHtml = fillers && typeof fillers === "object" && fillers.summary
+    ? `<div class="filler-card">
+        <div class="summary">${esc(fillers.summary)}</div>
+        ${fillers.why_it_matters ? `<div class="why">${esc(fillers.why_it_matters)}</div>` : ""}
+        ${Array.isArray(fillers.how_to_reduce) && fillers.how_to_reduce.length
+          ? `<ul class="filler-reduce-list">${fillers.how_to_reduce.map(t => `<li>${esc(t)}</li>`).join("")}</ul>`
+          : ""}
+      </div>`
+    : (typeof fillers === "string" && fillers
+        ? `<div class="filler-card"><div class="summary">${esc(fillers)}</div></div>`
+        : `<div class="notice">No significant filler use detected.</div>`);
+
+  // Grammar breakdown is an array of full 4-part explanations, one per real
+  // grammar.issues entry — this is the evidence-based, learner-facing core
+  // of the report, so it gets a dedicated "you said → why → say instead →
+  // next time" layout rather than a generic key/value list.
+  const grammarBreakdown = Array.isArray(growth.grammar_breakdown) ? growth.grammar_breakdown : [];
+  const grammarHtml = grammarBreakdown.length
+    ? grammarBreakdown.map(g => `
+        <div class="grammar-fix-card">
+          ${g.you_said ? `<div class="gfc-said"><span class="tag">You said</span>${esc(g.you_said)}</div>` : ""}
+          ${g.what_went_wrong || g.why_its_wrong ? `<div class="gfc-why">${
+            [g.what_went_wrong, g.why_its_wrong].filter(Boolean).map(esc).join(" ")
+          }</div>` : ""}
+          ${g.correct_version ? `<div class="gfc-correct"><span class="tag">Say instead</span>${esc(g.correct_version)}</div>` : ""}
+          ${g.how_to_avoid_next_time ? `<div class="gfc-tip"><span class="icon">💡</span><span>${esc(g.how_to_avoid_next_time)}</span></div>` : ""}
+        </div>`).join("")
+    : `<div class="notice">No grammar issues detected.</div>`;
+
+  const otherGrowthLabels = {
+    linking_word_suggestions: "Linking word suggestions",
+    vocabulary_improvements: "Vocabulary improvements",
+    fluency_pacing_improvements: "Fluency & pacing",
+    other_weaknesses: "Other observations",
+  };
+  const otherGrowthHtml = Object.entries(otherGrowthLabels)
+    .filter(([k]) => growth[k])
+    .map(([k, label]) => `<li><span class="label">${esc(label)}:</span> ${esc(growth[k])}</li>`)
+    .join("");
+
+  const repetitions = Array.isArray(report.repetitions) ? report.repetitions : [];
+  const repsHtml = repetitions.length
+    ? repetitions.map(r => `<div class="repeat-row">
+        <span class="word">${esc(r.word_or_phrase)}</span>
+        <span class="freq">used ${esc(r.frequency)}×</span>
+        <span class="arrow">→</span>
+        ${Array.isArray(r.better_alternatives) ? r.better_alternatives.map(a => `<span class="alt">${esc(a)}</span>`).join("") : ""}
+      </div>`).join("")
+    : `<div class="notice">No significant repetition detected.</div>`;
+
+  const advGrammar = Array.isArray(report.advanced_grammar_used) ? report.advanced_grammar_used : [];
+  const advGrammarHtml = advGrammar.length
+    ? advGrammar.map(a => `<div class="adv-grammar-card">
+        <span class="badge">${esc(a.construction)}</span>
+        <div class="quote">"${esc(a.quoted_example)}"</div>
+        ${a.note ? `<div class="note">${esc(a.note)}</div>` : ""}
+      </div>`).join("")
+    : `<div class="notice">None clearly evidenced in this sample.</div>`;
+
+  const vocab = report.vocabulary || {};
+  const vocabHtml = vocab.active_vocabulary_note || (Array.isArray(vocab.useful_higher_level_words_used) && vocab.useful_higher_level_words_used.length) || vocab.suggestions_for_improving_vocabulary
+    ? `<div class="vocab-block">
+        ${vocab.active_vocabulary_note ? `<div class="row"><span class="k">Where you stand</span>${esc(vocab.active_vocabulary_note)}</div>` : ""}
+        ${Array.isArray(vocab.useful_higher_level_words_used) && vocab.useful_higher_level_words_used.length
+          ? `<div class="row"><span class="k">Higher-level words used</span><div class="word-list">${vocab.useful_higher_level_words_used.map(w => `<span class="word-chip">${esc(w)}</span>`).join("")}</div></div>`
+          : ""}
+        ${vocab.suggestions_for_improving_vocabulary ? `<div class="row"><span class="k">Suggestions</span>${esc(vocab.suggestions_for_improving_vocabulary)}</div>` : ""}
+      </div>`
+    : "";
+
+  return `
+    ${overviewHtml}
+    <div class="tr-band-row" style="margin-top:12px;">
+      ${perfRow("accuracy", "Accuracy")}
+      ${perfRow("fluency", "Fluency")}
+      ${perfRow("use_of_english", "Use of English")}
+    </div>
+
+    <div class="tr-section-title">✏️ Grammar — what went wrong &amp; how to fix it</div>
+    ${grammarHtml}
+
+    <div class="tr-section-title">💬 Fillers</div>
+    ${fillersHtml}
+
+    <div class="tr-section-title">🔁 Repeated words</div>
+    ${repsHtml}
+
+    <div class="tr-section-title">📚 Vocabulary</div>
+    ${vocabHtml || `<div class="notice">No vocabulary notes available.</div>`}
+
+    <div class="tr-section-title">⭐ Advanced constructions used well</div>
+    ${advGrammarHtml}
+
+    ${otherGrowthHtml ? `<div class="tr-section-title">🎯 Other growth areas</div><ul class="tr-growth-list">${otherGrowthHtml}</ul>` : ""}
+  `;
+}
+
+function renderTeacherReport(report, detail) {
+  if (!report) {
+    els.analysisResults.appendChild(
+      card(`<h3>📝 Teacher Report (Groq)</h3><div class="notice">${
+        esc(detail || "Not available — GROQ_API_KEY may be unset, or the request failed.")
+      }</div>`)
+    );
+    return;
+  }
+
+  els.analysisResults.appendChild(
+    card(`<h3>📝 Teacher Report (Groq)</h3>${buildTeacherReportHtml(report)}`)
+  );
+}
+
 function renderPerf(elapsedMs, duration) {
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>Performance</h3><div class="metric-grid">
       <div class="metric"><div class="label">API Response Time</div><div class="value">${elapsedMs} ms</div></div>
       ${duration !== undefined ? metric("Duration Sent (s)", duration) : ""}
@@ -1154,14 +1585,14 @@ function renderPerf(elapsedMs, duration) {
 
 function renderTranscript(transcript) {
   if (transcript === undefined) return;
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>Transcript</h3><div class="notice" style="color:var(--text); border-style:solid;">${esc(transcript) || "<em>(empty)</em>"}</div>`)
   );
 }
 
 function renderStt(stt) {
   const mismatch = stt.requested_provider && stt.requested_provider !== stt.provider;
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>Speech-to-Text</h3>
       <div class="notice ${mismatch ? "warn" : ""}">
         <strong>Engine used: ${esc(stt.provider)}</strong>${
@@ -1190,12 +1621,18 @@ function renderVocabulary(v) {
       <div class="word-list">${v.advanced_words.map((w) => `<span class="word-chip">${esc(w)}</span>`).join("")}</div>`;
   }
 
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>Vocabulary</h3><div class="metric-grid">${rows.join("")}</div>${wordsHtml}`)
   );
 }
 
-function renderGrammar(g, toolAvailable) {
+function renderGrammar(g, toolAvailable, grammarContext) {
+  // g.issues is POST-VALIDATION: only candidates the contextual-validation
+  // layer (grammar_context_validator.py — Groq, or its offline heuristic
+  // fallback) judged "true_grammar_error" ever land here / count toward
+  // g.errors. See grammarContext for everything that was filtered out and
+  // why (written-English notes, style/register, spoken-usage asides,
+  // non-errors) and the full candidate+judgment evidence trail.
   let issuesHtml = "";
   if (Array.isArray(g.issues) && g.issues.length) {
     issuesHtml = g.issues
@@ -1204,13 +1641,13 @@ function renderGrammar(g, toolAvailable) {
       <div class="issue-card">
         ${iss.wrong !== undefined ? `<div class="issue-row"><span class="k">Wrong:</span><span class="v-wrong">${esc(iss.wrong)}</span></div>` : ""}
         ${iss.correct !== undefined ? `<div class="issue-row"><span class="k">Correct:</span><span class="v-correct">${esc(iss.correct)}</span></div>` : ""}
-        ${iss.message !== undefined ? `<div class="issue-row"><span class="k">Message:</span><span>${esc(iss.message)}</span></div>` : ""}
+        ${iss.learner_explanation ? `<div class="issue-row"><span class="k">What went wrong:</span><span>${esc(iss.learner_explanation)}</span></div>` : (iss.message !== undefined ? `<div class="issue-row"><span class="k">Message:</span><span>${esc(iss.message)}</span></div>` : "")}
         ${iss.context !== undefined ? `<div class="issue-row"><span class="k">Context:</span><span>${esc(iss.context)}</span></div>` : ""}
       </div>`
       )
       .join("");
   } else if (g.errors === 0) {
-    issuesHtml = `<div class="notice">No grammar issues detected.</div>";
+    issuesHtml = `<div class="notice">No grammar issues detected.</div>`;
   }
 
   const toolLine =
@@ -1218,13 +1655,62 @@ function renderGrammar(g, toolAvailable) {
       ? `<div class="notice warn" style="margin-top:8px;"><strong>Note:</strong> the grammar tool (language_tool_python / Java) is unavailable on this backend instance — error count is a crude fallback, not real LanguageTool checking.</div>`
       : "";
 
-  els.results.appendChild(
+  // ── Contextual validation summary + non-scoring notes ──────────────────
+  let validationHtml = "";
+  if (grammarContext) {
+    const src = grammarContext.validation_source;
+    const srcLabel = src === "llm_groq"
+      ? `LLM (Groq${grammarContext.model ? `, ${esc(grammarContext.model)}` : ""}) contextual validation`
+      : src === "heuristic_fallback"
+        ? "Offline heuristic fallback (Groq unavailable)"
+        : src === "no_candidates" ? "No candidates to validate" : esc(src || "unknown");
+
+    const notes = Array.isArray(grammarContext.context_notes) ? grammarContext.context_notes : [];
+    const classLabel = {
+      written_only_issue: "Written-English only — not spoken grammar",
+      style_or_register: "Style / register — not a grammar mistake",
+      spoken_usage_issue: "Spoken-usage note — not a scoring error",
+      not_an_error: "Not actually an error here",
+    };
+    const notesHtml = notes.length
+      ? notes.map((n) => `
+        <div class="issue-card" style="opacity:0.85;">
+          <div class="issue-row"><span class="k">Flagged text:</span><span class="v-wrong">${esc(n.wrong || "")}</span></div>
+          <div class="issue-row"><span class="k">Classification:</span><span>${esc(classLabel[n.classification] || n.classification)}</span></div>
+          <div class="issue-row"><span class="k">Why it's not counted:</span><span>${esc(n.learner_explanation || "")}</span></div>
+          ${n.written_note ? `<div class="issue-row"><span class="k">Written-English note:</span><span>${esc(n.written_note)}</span></div>` : ""}
+        </div>`).join("")
+      : `<div class="notice">No candidates were reclassified away from the grammar score.</div>`;
+
+    const debugTrail = Array.isArray(grammarContext.debug_trail) ? grammarContext.debug_trail : [];
+    const debugTrailHtml = debugTrail.length
+      ? `<details style="margin-top:8px;">
+           <summary style="cursor:pointer;color:var(--text-dim);">Full candidate → judgment evidence trail (${debugTrail.length})</summary>
+           <pre style="max-height:320px;overflow:auto;">${esc(JSON.stringify(debugTrail, null, 2))}</pre>
+         </details>`
+      : "";
+
+    validationHtml = `
+      <div class="label" style="font-size:11px;color:var(--text-dim);text-transform:uppercase;margin-top:14px;">Contextual Validation</div>
+      <div class="metric-grid">
+        ${metric("Candidates evaluated", grammarContext.candidates_evaluated ?? 0)}
+        ${metric("Reclassified away from score", grammarContext.reclassified_away_from_score ?? 0)}
+      </div>
+      <div class="notice" style="margin-top:6px;">${srcLabel}${grammarContext.detail ? ` — ${esc(grammarContext.detail)}` : ""}</div>
+      <div class="label" style="font-size:11px;color:var(--text-dim);text-transform:uppercase;margin-top:10px;">Written-English / Style / Usage Notes (not scored)</div>
+      ${notesHtml}
+      ${debugTrailHtml}
+    `;
+  }
+
+  els.analysisResults.appendChild(
     card(`<h3>Grammar</h3><div class="metric-grid">
         ${g.score !== undefined ? metric("Score", g.score) : ""}
         ${g.errors !== undefined ? metric("Errors", g.errors) : ""}
       </div>
       ${issuesHtml}
-      ${toolLine}`)
+      ${toolLine}
+      ${validationHtml}`)
   );
 }
 
@@ -1283,7 +1769,7 @@ function renderFillers(filler, legacyOccurrences) {
         : `<div class="notice">No matches (either none found, or this STT provider doesn't return word-level timing data).</div>`}`;
   }
 
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>Filler Words</h3><div class="metric-grid">${summaryRows}</div>${wordsHtml}${occHtml}${legacyHtml}`)
   );
 }
@@ -1314,7 +1800,7 @@ function renderPronunciation(p) {
       </div>`;
   }
 
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>Pronunciation</h3><div class="metric-grid">${rows}</div>
       ${providerHtml}
       <div class="label" style="font-size:11px;color:var(--text-dim);text-transform:uppercase;margin:8px 0 4px;">Flagged Words (capped at 8, from scoring path)</div>
@@ -1328,13 +1814,13 @@ function renderPacing(pace) {
     pace.score !== undefined ? metric("Score", pace.score) : "",
     pace.wpm !== undefined ? metric("WPM", pace.wpm) : "",
   ].join("");
-  els.results.appendChild(card(`<h3>Pacing</h3><div class="metric-grid">${rows}</div>`));
+  els.analysisResults.appendChild(card(`<h3>Pacing</h3><div class="metric-grid">${rows}</div>`));
 }
 
 function renderAcoustic(clarity) {
   if (!clarity) return;
   const rows = [clarity.score !== undefined ? metric("Clarity Score", clarity.score) : ""].join("");
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>Acoustic / Clarity</h3><div class="metric-grid">${rows}</div>
       <div class="notice">Clarity is a weighted blend of pace, filler, grammar, and pronunciation scores (see <code>score_clarity()</code>) — there is no separate acoustic-signal analysis in this backend.</div>`)
   );
@@ -1350,7 +1836,7 @@ function renderOverall(data) {
   }
   if (data.archetype) rows.push(metric("Archetype", `${data.archetype.emoji || ""} ${data.archetype.archetype || ""}`.trim()));
 
-  els.results.appendChild(card(`<h3>Overall Assessment</h3><div class="metric-grid">${rows.join("")}</div>
+  els.analysisResults.appendChild(card(`<h3>Overall Assessment</h3><div class="metric-grid">${rows.join("")}</div>
     ${data.feedback ? `<div class="notice" style="margin-top:10px; color:var(--text); border-style:solid;">${esc(data.feedback)}</div>` : ""}`));
 }
 
@@ -1360,7 +1846,7 @@ function renderTokenAnalysis(linguisticAnalysis, ltErrors) {
       ltErrors && ltErrors.analyze
         ? `The /v2/analyze call failed: ${ltErrors.analyze}`
         : "No linguistic_analysis was returned for this request.";
-    els.results.appendChild(
+    els.analysisResults.appendChild(
       card(`<h3>LanguageTool Token Analysis (POS / Lemma)</h3>
         <div class="notice warn">
           <strong>Unavailable for this request.</strong> ${esc(reason)}
@@ -1372,7 +1858,7 @@ function renderTokenAnalysis(linguisticAnalysis, ltErrors) {
 
   const sentences = linguisticAnalysis.sentences || [];
   if (!sentences.length) {
-    els.results.appendChild(
+    els.analysisResults.appendChild(
       card(`<h3>LanguageTool Token Analysis (POS / Lemma)</h3><div class="notice">No tokens returned.</div>`)
     );
     return;
@@ -1409,7 +1895,7 @@ function renderTokenAnalysis(linguisticAnalysis, ltErrors) {
     })
     .join("");
 
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>LanguageTool Token Analysis (POS / Lemma)</h3>
       <div class="notice" style="margin-bottom:10px;">
         From LanguageTool's <code>/v2/analyze</code> — token/lemma/POS data only.
@@ -1429,7 +1915,7 @@ function renderWordTimings(wordTimings) {
       source === "saaras"
         ? "Saaras's response only includes chunk/sentence-level timestamps, not word-level — this is expected, not an error."
         : "No word-level timing data returned.";
-    els.results.appendChild(
+    els.analysisResults.appendChild(
       card(`<h3>Word Timings</h3>
         <div class="notice">
           <strong>Source: ${esc(sourceLabel)}</strong><br>${esc(reason)}
@@ -1450,7 +1936,7 @@ function renderWordTimings(wordTimings) {
     )
     .join("");
 
-  els.results.appendChild(
+  els.analysisResults.appendChild(
     card(`<h3>Word Timings</h3>
       <div class="notice" style="margin-bottom:10px;"><strong>Source: ${esc(sourceLabel)}</strong> — every word from this provider's word-level timing output.</div>
       <table class="tokens">
@@ -1461,7 +1947,7 @@ function renderWordTimings(wordTimings) {
 }
 
 function renderNote(note) {
-  els.results.appendChild(card(`<h3>Backend Note</h3><div class="notice">${esc(note)}</div>`));
+  els.analysisResults.appendChild(card(`<h3>Backend Note</h3><div class="notice">${esc(note)}</div>`));
 }
 
 function renderRawJson(data) {
@@ -1483,5 +1969,5 @@ function renderRawJson(data) {
       setTimeout(() => (btn.textContent = original), 1200);
     });
   });
-  els.results.appendChild(wrapper);
+  els.analysisResults.appendChild(wrapper);
 }

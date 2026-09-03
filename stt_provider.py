@@ -238,7 +238,7 @@ class SaarasSTTProvider(STTProvider):
         (transcript, None) on success or (None, detail) on failure. Never
         raises — mirrors transcribe()'s own no-raise contract, since this is
         called both directly and once per chunk from _transcribe_chunked()."""
-        data = {"model": "saaras:v3", "mode": "transcribe", "with_timestamps": "true"}
+        data = {"model": "saaras:v3", "mode": "verbatim", "with_timestamps": "true"}
         if self.language_code:
             data["language_code"] = self.language_code
 

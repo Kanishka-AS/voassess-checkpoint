@@ -40,6 +40,8 @@ from stt_provider import (
     STTProviderRegistry, STTProviderError, STT_PROVIDER_NAMES,
     WhisperSTTProvider, SaarasSTTProvider,
 )
+from groq_provider import generate_teacher_report
+from grammar_context_validator import apply_contextual_validation
 import repository as db
 
 # HTTP LanguageTool server (preferred grammar/analyze source — see score_free_speech()).
@@ -517,10 +519,32 @@ def resolve_grammar(transcript: str, lt_grammar: dict, linguistic_analysis: dict
     rules. Purely additive: None here means exactly the same regex-only
     behavior as before this parameter existed.
 
-    Returns (ge, grammar_issues, grammar_source, heuristic_added_count).
-    `ge`/`grammar_issues`/`grammar_source` are exactly the fields the
-    frontend already consumes (unchanged shape); `heuristic_added_count` is
-    new/additive, for callers that want to report it.
+    ── Contextual validation (Groq) ────────────────────────────────────
+    Everything above only produces CANDIDATE issues — tools built for
+    proofreading written text, which regularly flag things that are not
+    actually spoken-grammar mistakes (e.g. "forty one" vs "forty-one" is a
+    hyphenation convention; "gonna" is a normal informal spoken form, not
+    a grammar error). Before those candidates are allowed to affect the
+    grammar score or the learner-facing issue list, they're passed through
+    grammar_context_validator.apply_contextual_validation(), which uses Groq
+    to read each candidate in its full sentence context and classify it as
+    true_grammar_error / spoken_usage_issue / written_only_issue /
+    style_or_register / not_an_error (falling back to a small offline
+    heuristic classifier if Groq is unavailable — see that module's
+    docstring). ONLY candidates judged `true_grammar_error` remain in
+    `grammar_issues` / count toward `ge` after this point; everything else
+    is preserved separately as non-scoring "context notes" (see
+    `grammar_context` in the returned tuple) rather than discarded, so
+    nothing here silently invents or hides evidence — it only decides what
+    is allowed to count as a spoken grammar mistake.
+
+    Returns (ge, grammar_issues, grammar_source, heuristic_added_count,
+    grammar_context). `ge`/`grammar_issues`/`grammar_source` are exactly
+    the fields the frontend already consumes (unchanged shape, now
+    validated); `heuristic_added_count` is additive, for callers that want
+    to report it; `grammar_context` is a new, additive debug/notes dict
+    (see build below) — callers that ignore it get unchanged behavior
+    other than the (intentional) score/issue-list correction itself.
     """
     if lt_grammar is not None:
         ge = lt_grammar["errors"]
@@ -538,7 +562,16 @@ def resolve_grammar(transcript: str, lt_grammar: dict, linguistic_analysis: dict
 
     ge, grammar_issues, heuristic_added = augment_grammar_issues(
         transcript, ge, grammar_issues, linguistic_analysis=linguistic_analysis)
-    return ge, grammar_issues, grammar_source, heuristic_added
+
+    # See grammar_context_validator.apply_contextual_validation() for the
+    # full rationale/mechanics. In short: `ge`/`grammar_issues` above are
+    # still just CANDIDATES from tools built for written-text proofreading;
+    # this call is what actually decides which candidates are allowed to
+    # count as a spoken grammar mistake.
+    ge, grammar_issues, grammar_context = apply_contextual_validation(
+        transcript, ge, grammar_issues)
+
+    return ge, grammar_issues, grammar_source, heuristic_added, grammar_context
 
 
 def score_clarity(pace: float, filler: float, grammar: float, pronun: float) -> float:
@@ -779,7 +812,7 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
     # LanguageToolProvider.check_and_analyze). If the HTTP server is
     # unavailable entirely, fall straight back to the existing local
     # language_tool_python / naive-regex behavior — unchanged from before.
-    ge, grammar_issues, grammar_source, heuristic_added = resolve_grammar(
+    ge, grammar_issues, grammar_source, heuristic_added, grammar_context = resolve_grammar(
         transcript, lt_grammar, linguistic_analysis)
     grammar_s = score_grammar(ge, word_count)
 
@@ -887,6 +920,12 @@ def score_free_speech(transcript: str, segments: list, duration: float, wav_path
         "grammar":      {"score": round(grammar_s, 1), "errors": ge, "issues": grammar_issues},
         "grammar_source": grammar_source,
         "grammar_heuristic_issues_added": heuristic_added,
+        # Contextual-validation (Groq) evidence — see grammar_context_validator.py.
+        # `grammar.errors`/`grammar.issues` above already reflect this validation
+        # (only true_grammar_error candidates remain); this field is additive and
+        # explains *why*: which candidates were reclassified away, the non-scoring
+        # written-English/style/usage notes, and the full candidate+judgment trail.
+        "grammar_context": grammar_context,
         "clarity":      {"score": round(clarity_s, 1)},
         "vocabulary":   vocab,
         "cefr":         cefr,
@@ -1291,7 +1330,7 @@ async def debug_analyze_text(payload: dict):
     # to the existing local language_tool_python / naive-regex path unchanged.
     lt_grammar, linguistic_analysis, lt_errors = _lt_provider.check_and_analyze(transcript)
 
-    ge, grammar_issues, grammar_source, heuristic_added = resolve_grammar(
+    ge, grammar_issues, grammar_source, heuristic_added, grammar_context = resolve_grammar(
         transcript, lt_grammar, linguistic_analysis)
     grammar_s = score_grammar(ge, word_count)
 
@@ -1303,6 +1342,7 @@ async def debug_analyze_text(payload: dict):
         "filler": {"score": None, "count": 0, "words": [], "occurrences": [], "rate_per_min": None},
         "pronunciation": {"score": None, "issues": [], "provider": "text_only", "requested_provider": "text_only", "available": True, "detail": None, "methodology": None},
         "grammar": {"score": round(grammar_s, 1), "errors": ge, "issues": grammar_issues},
+        "grammar_context": grammar_context,
         "clarity": {"score": None},
         "vocabulary": vocab,
         "cefr": {"score": None, "level": None},
@@ -1336,6 +1376,7 @@ async def debug_analyze_text(payload: dict):
         "word_count": word_count,
         "vocabulary": vocab,
         "grammar": {"score": round(grammar_s, 1), "errors": ge, "issues": grammar_issues},
+        "grammar_context": grammar_context,
         "grammar_source": grammar_source,
         "grammar_heuristic_issues_added": heuristic_added,
         "grammar_tool_available": GRAMMAR_OK,
@@ -1346,6 +1387,11 @@ async def debug_analyze_text(payload: dict):
         "save_error": save_error,
         "note": ("Text-only debug analysis: pace, pronunciation, clarity, overall, and CEFR "
                  "require audio (Whisper timing/segments) and are not computed here. "
+                 "'grammar.errors'/'grammar.issues' are POST-VALIDATION: LanguageTool + "
+                 "heuristic candidates are first run through grammar_context_validator "
+                 "(Groq, or an offline heuristic fallback) and only candidates judged "
+                 "'true_grammar_error' remain — see 'grammar_context' for the reclassified "
+                 "written-English/style/usage notes and the full candidate+judgment trail. "
                  "'linguistic_analysis' comes from the LanguageTool /v2/analyze endpoint "
                  "(token/lemma/POS data only — it does not indicate grammatical correctness "
                  "or pronunciation quality; use 'grammar' for correctness). It is null if "
@@ -1471,6 +1517,19 @@ async def debug_analyze_audio(audio: UploadFile = File(...), duration: float = F
         "available": stt_requested.available,
         "detail": None if stt_requested.available else stt_requested.detail,
     }
+
+    # Groq teacher report — additive, second step on top of the deterministic
+    # evidence above (see groq_provider.py). Never touches scores/evidence;
+    # if GROQ_API_KEY is unset or the request fails, teacher_report is just
+    # null and the rest of this response is unaffected.
+    try:
+        teacher_report_result = generate_teacher_report(
+            transcript, r.get("transcript_with_fillers"), r)
+        r["teacher_report"] = teacher_report_result.report if teacher_report_result.available else None
+        r["teacher_report_detail"] = teacher_report_result.detail
+    except Exception as e:
+        r["teacher_report"] = None
+        r["teacher_report_detail"] = f"Teacher report generation raised an unexpected error: {e}"
 
     word_timings = _build_word_timings(segments, stt_used.provider)
 
